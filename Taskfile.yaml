@@ -1,0 +1,17 @@
+version: "3"
+
+vars:
+  CONFIG_TOKENIZER: "configs/data/tokenizer"
+
+tasks:
+  default:
+    desc: "Show available tasks"
+    cmds:
+      - task --list
+
+  tokenizer:
+    desc: "Run tokenizer (config-driven)"
+    cmds:
+      - echo "==> Preprocess using config:{{.CONFIG_TOKENIZER}}"
+      - chmod +x ./scripts/tokenizer.sh 
+      - ./scripts/tokenizer.sh

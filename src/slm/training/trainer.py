@@ -4,6 +4,29 @@ import wandb
 from omegaconf import OmegaConf
 
 
+class Trainer():
+    def __init__(
+            self,
+            smoke_test,
+            model,
+            tokenizer,
+            opt,
+            scheduler,
+
+                 ):
+        
+        self.smoke_test = smoke_test
+        self.model = model
+        self.opt = opt
+        self.tokenizer = tokenizer
+
+    def training_loop(self):
+        raise ValueError
+
+
+
+
+
 def main(parser):
 
     # loaded_cfg = OmegaConf.load(parser.config_path)
