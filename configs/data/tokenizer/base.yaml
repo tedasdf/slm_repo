@@ -1,0 +1,55 @@
+version: 'v_1'
+
+dataset:
+  source_type: "huggingface"
+  dataset_name: "julien040/hacker-news-posts"
+
+  train_split_name: "train"
+  val_split_name: null
+  test_split_name: null
+
+  text_fields:
+    - "title"
+
+  cache_dir: "artifacts/data/hf_cache"
+  streaming: false
+
+  max_train_samples: null
+  max_val_samples: null
+  max_test_samples: null
+
+  seed: 42
+  shuffle: true
+  shuffle_buffer_size: 10000
+
+tokenizer:
+  tokenizer_type: "bpe"
+  vocab_size: 16000
+  min_frequency: 2
+
+  pad_token: "<pad>"
+  eos_token: "<eos>"
+  unk_token: "<unk>"
+  bos_token: null
+
+  reuse_existing: true
+  tokenizer_train_samples: 200000
+
+preprocess:
+  block_size: 256
+  packing: true
+  truncation: true
+  stride: null
+
+  append_eos: true
+  drop_short_sequences: true
+
+  target_train_tokens: 8000000
+  target_val_tokens: 500000
+  target_test_tokens: 0
+
+  val_fraction: 0.01
+  split_seed: 42
+
+  num_proc: 4
+  debug: false

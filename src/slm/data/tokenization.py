@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 import itertools
 import hashlib
 import os
@@ -11,12 +11,22 @@ from typing import Iterator, Optional
 import numpy as np
 from datasets import load_dataset
 from omegaconf import OmegaConf
-from src.slm.data.tokenization import resolve_config_paths
-from src.slm.data.tokenizer import BPETokenizer
-from src.slm.utils.paths import finish_run, start_run
 from tokenizers import Tokenizer, decoders, models, pre_tokenizers, trainers
 
-from config import PreprocessArtifactPaths, PreprocessStageConfig
+from slm.utils.config import resolve_config_paths
+from slm.utils.paths import finish_run, start_run
+
+from .tokenizer import BPETokenizer
+from .config import PreprocessStageConfig
+
+@dataclass
+class PreprocessArtifactPaths:
+    tokenizer_path: str
+    splits_dir: str
+    train_bin_path: str
+    val_bin_path: str
+    test_bin_path: str
+
 
 
 # helper functions
@@ -24,11 +34,12 @@ def load_config(config_path: str) -> PreprocessStageConfig:
     schema = OmegaConf.structured(PreprocessStageConfig)
     loaded_cfg = OmegaConf.load(config_path)
     merged = OmegaConf.merge(schema, loaded_cfg)
+
     missing = OmegaConf.missing_keys(merged)
     if missing:
         raise ValueError(f"Missing config fields: {sorted(missing)}")
-    return OmegaConf.to_object(merged)
 
+    return OmegaConf.to_object(merged)
 def prepare_preprocess_artifacts(run_dir: str) -> PreprocessArtifactPaths:
     splits_dir = os.path.join(run_dir, "splits")
     os.makedirs(splits_dir, exist_ok=True)
@@ -88,7 +99,10 @@ def iter_huggingface_examples(
     )
 
     if dataset_cfg.shuffle:
-        ds = ds.shuffle(seed=seed, buffer_size=dataset_cfg.shuffle_buffer_size)
+        if dataset_cfg.streaming:
+            ds = ds.shuffle(seed=seed, buffer_size=dataset_cfg.shuffle_buffer_size)
+        else:
+            ds = ds.shuffle(seed=seed)
 
     hard_cap = 1000 if smoke_test else max_samples
 
@@ -135,6 +149,9 @@ def iter_final_split_texts(
     role: str,
     smoke_test: bool = False,
 ):
+    if role not in {'train','val','test'}:
+        raise ValueError(f"Unknown role: {role}")
+    
     dataset_cfg = cfg.dataset
     preprocess_cfg = cfg.preprocess
 
@@ -344,38 +361,54 @@ def run_single_config(config_path: Path, smoke_test: bool) -> None:
     
     cfg = load_config(str(config_path))
 
+    if (
+        cfg.dataset.val_split_name is None
+        and cfg.preprocess.target_val_tokens > 0
+        and cfg.preprocess.val_fraction <= 0
+    ):
+        raise ValueError(
+            "val_split_name is None, but target_val_tokens > 0 and val_fraction <= 0. "
+            "Either provide an explicit validation split or set preprocess.val_fraction > 0."
+        )
+
+
     ctx = start_run(
         config_path=str(config_path),
         process_type="tokenizer",
         dataset_version_id=cfg.version,
     )
-    
-    artifact_paths = prepare_preprocess_artifacts(ctx.run_dir)
 
-    
-    print(f"Train split:           {cfg.dataset.train_split_name}")
-    print(f"Val split:             {cfg.dataset.val_split_name}")
-    print(f"Test split:            {cfg.dataset.test_split_name}")
-    print(f"Target train tokens:   {cfg.preprocess.target_train_tokens:,}")
-    print(f"Target val tokens:     {cfg.preprocess.target_val_tokens:,}")
-    print(f"Tokenizer vocab size:  {cfg.tokenizer.vocab_size:,}")
-
-    tok = train_or_load_tokenizer(cfg, tokenizer_path=Path(artifact_paths.tokenizer_path), smoke_test=smoke_test)
-    
-    stats = encode_and_write_bins(
-        cfg=cfg,
-        tok=tok,
-        artifacts=artifact_paths,
-        smoke_test=smoke_test,
-    )
-    
-    finish_run(
-        ctx.manifest_path,
-        status="completed",
-        artifacts=asdict(artifact_paths),
-        stats=stats,
-    )
+    try:
         
+        artifact_paths = prepare_preprocess_artifacts(ctx.run_dir)
+
+        
+        print(f"Train split:           {cfg.dataset.train_split_name}")
+        print(f"Val split:             {cfg.dataset.val_split_name}")
+        print(f"Test split:            {cfg.dataset.test_split_name}")
+        print(f"Target train tokens:   {cfg.preprocess.target_train_tokens:,}")
+        print(f"Target val tokens:     {cfg.preprocess.target_val_tokens:,}")
+        print(f"Tokenizer vocab size:  {cfg.tokenizer.vocab_size:,}")
+
+        tok = train_or_load_tokenizer(cfg, tokenizer_path=Path(artifact_paths.tokenizer_path), smoke_test=smoke_test)
+        
+        stats = encode_and_write_bins(
+            cfg=cfg,
+            tok=tok,
+            artifacts=artifact_paths,
+            smoke_test=smoke_test,
+        )
+        
+        finish_run(
+            ctx.manifest_path,
+            status="completed",
+            artifacts=asdict(artifact_paths),
+            stats=stats,
+        )
+    except Exception as e:
+        finish_run(ctx.manifest_path, status="failed", extras={"error": str(e)})
+        raise
+            
 
 def main(parser) -> None:
     # find paths 

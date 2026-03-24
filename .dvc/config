@@ -1,0 +1,5 @@
+[core]
+    remote = mys3remote
+['remote "mys3remote"']
+    url = s3://attention-ntp-pipeline-data-2026/data
+    region = ap-southeast-2

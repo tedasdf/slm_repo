@@ -69,11 +69,10 @@ class PreprocessConfig:
     # token budgets
     target_train_tokens: int = 100_000_000
     target_val_tokens: int = 5_000_000
-    target_test_tokens: Optional[int] = None
+    target_test_tokens: int = 0
 
     # create splits from train if missing
     val_fraction: float = 0.0
-    test_fraction: float = 0.0
     split_seed: int = 42
 
     # execution
@@ -87,14 +86,4 @@ class PreprocessStageConfig:
     dataset: DatasetConfig = field(default_factory=DatasetConfig)
     tokenizer: TokenizerConfig = field(default_factory=TokenizerConfig)
     preprocess: PreprocessConfig = field(default_factory=PreprocessConfig)
-
-
-
-@dataclass
-class PreprocessArtifactPaths:
-    tokenizer_path: str
-    splits_dir: str
-    train_bin_path: str
-    val_bin_path: str
-    test_bin_path: str
 

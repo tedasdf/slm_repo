@@ -1,0 +1,1 @@
+python -m slm.data.tokenization --config_path configs/data/tokenizer/base.yaml
