@@ -47,7 +47,7 @@ class Canonicalizer(ast.NodeTransformer):
 
     def _map_name(self, s:str, prefix: str = "VAR") -> str:
         if self.cfg.keep_builtins and s in _BUILTINS :
-            return ss
+            return s=
         if s not in self.name_map:
             self.name_map[s] = f"{prefix}_{self.counter}"
             self.counter += 1
