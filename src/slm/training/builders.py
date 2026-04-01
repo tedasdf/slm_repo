@@ -9,8 +9,8 @@ import torch.nn as nn
 
 from src.slm.training.lm_loader import build_dataloaders as build_token_dataloaders
 from src.slm.model import ModelConfig, TransformerLM
-from slm.training.logging import PrintMetricsCallback, WandBCallback
-from slm.training.trainer import Trainer
+from .logging import PrintMetricsCallback, WandBCallback
+from .trainer import Trainer
 
 
 
