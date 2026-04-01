@@ -1,4 +1,4 @@
-from .base import BaseExperiment, ExperimentArtifacts
-from .runner import run_experiment
+from .base import BaseExperiment
+from .scaling_law import ScalingLawExperiment
 
-__all__ = ["BaseExperiment", "ExperimentArtifacts", "run_experiment"]
+__all__ = ["BaseExperiment", "ScalingLawExperiment"]

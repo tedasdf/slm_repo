@@ -1,54 +1,32 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
 from typing import Any
 
-from slm.training.callbacks import Callback
-
-
-@dataclass
-class ExperimentArtifacts:
-    train_loader: Any | None = None
-    val_loader: Any | None = None
-    test_loader: Any | None = None
-    test_cases: dict[str, Any] = field(default_factory=dict)
-    extra_state: dict[str, Any] = field(default_factory=dict)
+from slm.training.run_config import RunConfig
 
 
 class BaseExperiment(ABC):
-    def __init__(self, cfg: Any) -> None:
-        self.cfg = cfg
+    def __init__(self, base_cfg: RunConfig) -> None:
+        self.base_cfg = base_cfg
 
     @abstractmethod
-    def build_model(self) -> Any:
+    def make_sweep_config(self) -> dict[str, Any]:
         raise NotImplementedError
 
     @abstractmethod
-    def build_optimizer(self, model: Any) -> Any:
+    def apply_overrides(self, cfg: RunConfig, sweep_cfg: Any) -> RunConfig:
         raise NotImplementedError
-
-    def build_scheduler(self, optimizer: Any) -> Any | None:
-        return None
 
     @abstractmethod
-    def build_dataloaders(self) -> ExperimentArtifacts:
+    def train_one_run(self) -> None:
         raise NotImplementedError
 
-    def generate_test_cases(self) -> dict[str, Any]:
-        return {}
+    @abstractmethod
+    def run(self, count: int | None = None) -> str:
+        raise NotImplementedError
 
-    def build_callbacks(self) -> list[Callback]:
-        return []
-
-    def build_metrics(self) -> dict[str, Any]:
-        return {}
-
-    def build_loss_fn(self) -> Any | None:
-        return None
-
-    def post_eval(self, trainer: Any, eval_outputs: dict[str, Any]) -> None:
-        pass
-
-    def post_train(self, trainer: Any) -> None:
-        pass
+    def analyze_results(self, *args: Any, **kwargs: Any) -> Any:
+        raise NotImplementedError(
+            f"{self.__class__.__name__} has not implemented analyze_results() yet."
+        )

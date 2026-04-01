@@ -10,7 +10,7 @@ import torch
 import torch.nn as nn
 
 from .callbacks import CallbackList
-from .config import TrainerConfig
+from .run_config import TrainerConfig
 from .state import TrainState
 
 
@@ -36,7 +36,6 @@ class Trainer:
         scheduler: Any | None = None,
         callbacks: list[Any] | None = None,
         loss_fn: Any | None = None,
-        experiment: Any | None = None,
     ) -> None:
         self.model = model
         self.optimizer = optimizer
@@ -45,7 +44,6 @@ class Trainer:
         self.val_loader = val_loader
         self.config = config
         self.loss_fn = loss_fn
-        self.experiment = experiment
 
         self.callbacks = CallbackList(callbacks or [])
         self.state = TrainState()
@@ -233,7 +231,7 @@ class Trainer:
 
         self.callbacks.on_eval_end(self, eval_outputs)
         self.model.train()
-        return eval_outputs
+
 
     def save_checkpoint(self, path: str | Path) -> None:
         path = Path(path)
@@ -296,9 +294,8 @@ class Trainer:
                             self.callbacks.on_step_end(self, step_outputs)
 
                         if self.val_loader is not None and self.state.step % self.config.eval_every == 0:
-                            eval_outputs = self.validate()
-                            if self.experiment is not None:
-                                self.experiment.post_eval(self, eval_outputs)
+                            self.validate()
+    
 
                         if self.state.step % self.config.checkpoint_every == 0:
                             ckpt_path = Path("artifacts/checkpoints") / f"step_{self.state.step}.pt"
@@ -307,9 +304,6 @@ class Trainer:
                 self.callbacks.on_epoch_end(self)
 
             self.callbacks.on_train_end(self)
-
-            if self.experiment is not None:
-                self.experiment.post_train(self)
 
         except BaseException as exc:
             self.callbacks.on_exception(self, exc)
