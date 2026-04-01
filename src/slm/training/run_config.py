@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal, Optional
 
-from src.slm.model.config import ModelConfig
+from slm.model.config import ModelConfig
 
 
 @dataclass
