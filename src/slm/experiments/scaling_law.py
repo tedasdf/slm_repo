@@ -15,6 +15,8 @@ class ScalingLawExperiment(BaseExperiment):
     def __init__(self, base_cfg: RunConfig) -> None:
         super().__init__(base_cfg)
 
+    
+
     def make_sweep_config(self) -> dict[str, Any]:
         """
         Flat parameter names make wandb sweeps easier to work with.
@@ -173,6 +175,14 @@ class ScalingLawExperiment(BaseExperiment):
 
         return sweep_id
 
+
+    # fixed compute budget:
+
+    # fixed compute time:
+
+
+
+    # equation for analyzing 
     def analyze_results(self, *args: Any, **kwargs: Any) -> Any:
         raise NotImplementedError(
             "ScalingLawExperiment.analyze_results() not implemented yet."
