@@ -1,39 +1,58 @@
+from __future__ import annotations
+
 import torch
 import torch.nn as nn
-from dataclasses import dataclass
+import torch.nn.functional as F
 
-@dataclass
-class MLPConfig:
-    mlp_type: str
-    d_model: int
-    dropout: float
+from .config import ModelConfig
 
 
-class StandardMLP(nn.Module):
-    def __init__(self, cfg: MLPConfig):
+class GELUMLP(nn.Module):
+    def __init__(self, cfg: ModelConfig) -> None:
         super().__init__()
+        self.fc_in = nn.Linear(cfg.model_dim, cfg.hidden_dim, bias=False)
+        self.fc_out = nn.Linear(cfg.hidden_dim, cfg.model_dim, bias=False)
 
-        self.net = nn.Sequential(
-            nn.Linear(cfg.d_model, 4 * cfg.d_model),
-            nn.GELU(),
-            nn.Linear(4 * cfg.d_model, cfg.d_model),
-            nn.Dropout(cfg.dropout),
-        )
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.fc_out(F.gelu(self.fc_in(x)))
 
-    def forward(self, x):
-        return self.net(x)
+
+class ReLU2MLP(nn.Module):
+    def __init__(self, cfg: ModelConfig) -> None:
+        super().__init__()
+        self.fc_in = nn.Linear(cfg.model_dim, cfg.hidden_dim, bias=False)
+        self.fc_out = nn.Linear(cfg.hidden_dim, cfg.model_dim, bias=False)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        h = self.fc_in(x)
+        return self.fc_out(F.relu(h).square())
+
 
 class SwiGLUMLP(nn.Module):
-    def __init__(self, cfg: MLPConfig):
+    def __init__(self, cfg: ModelConfig) -> None:
         super().__init__()
-        hidden_dim = 256 * ((int(8 * cfg.d_model / 3) + 256 - 1) // 256)
-        self.w1 = nn.Linear(cfg.d_model, hidden_dim, bias=False)
-        self.w2 = nn.Linear(cfg.d_model, hidden_dim, bias=False)
-        self.dropout = nn.Dropout(cfg.dropout)
-        self.w_out = nn.Linear(hidden_dim, cfg.d_model, bias=False)
+        self.fc_gate = nn.Linear(cfg.model_dim, cfg.hidden_dim, bias=False)
+        self.fc_value = nn.Linear(cfg.model_dim, cfg.hidden_dim, bias=False)
+        self.fc_out = nn.Linear(cfg.hidden_dim, cfg.model_dim, bias=False)
 
-    def forward(self, x):
-        x = torch.nn.functional.silu(self.w1(x)) * self.w2(x)
-        x = self.w_out(x)
-        x = self.dropout(x)
-        return x
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        gate = F.silu(self.fc_gate(x))
+        value = self.fc_value(x)
+        return self.fc_out(gate * value)
+
+
+MLP_REGISTRY: dict[str, type[nn.Module]] = {
+    "gelu": GELUMLP,
+    "relu2": ReLU2MLP,
+    "swiglu": SwiGLUMLP,
+}
+
+
+def build_mlp(cfg: ModelConfig) -> nn.Module:
+    mlp_cls = MLP_REGISTRY.get(cfg.mlp.mlp_type)
+    if mlp_cls is None:
+        raise ValueError(
+            f"Unknown mlp_type={cfg.mlp.mlp_type!r}. "
+            f"Available: {sorted(MLP_REGISTRY.keys())}"
+        )
+    return mlp_cls(cfg)

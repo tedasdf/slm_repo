@@ -1,0 +1,85 @@
+experiment:
+  model:
+    vocab_size: 32000
+    max_seq_len: 1024
+
+    num_layers: 8
+    model_dim: 512
+
+    block_type: "baseline"
+    norm_type: "rmsnorm"
+    tie_embeddings: true
+    logit_softcap: null
+
+    attention:
+      attention_type: "baseline"
+      num_heads: 8
+      num_kv_heads: null
+      head_dim: null
+      rope_base: 10000.0
+      qk_gain_init: 1.0
+      window_size: null
+
+    mlp:
+      mlp_type: "swiglu"
+      hidden_dim: null
+      mlp_mult: 4.0
+
+    init:
+      init_std: 0.02
+      tied_embed_init_std: null
+
+  optimizer:
+    optimizer_type: "adamw"
+    lr: 0.0003
+    weight_decay: 0.1
+    beta1: 0.9
+    beta2: 0.95
+    eps: 1.0e-8
+
+  logging:
+    use_print_callback: true
+    use_wandb: false
+    wandb_project: "slm-runs"
+    wandb_run_name: "baseline"
+    wandb_tags:
+      - "baseline"
+
+trainer:
+  device: "cuda"
+  precision: "bf16"
+
+  max_steps: 10000
+  max_epochs: null
+
+  grad_accum_steps: 1
+  clip_grad_norm: 1.0
+
+  train_log_every: 100
+  eval_every: 1000
+  checkpoint_every: 1000
+
+  max_eval_batches: null
+
+  compile_model: false
+  enable_anomaly_detection: false
+
+  save_best_checkpoint: true
+  metric_name_for_best: "val_loss"
+  metric_mode_for_best: "min"
+
+  num_sanity_val_steps: 0
+
+data:
+  train_bin_path: "artifacts/tokenizer/latest/splits/train.bin"
+  val_bin_path: "artifacts/tokenizer/latest/splits/val.bin"
+
+  seq_len: 1024
+  batch_size: 8
+
+  stride: null
+  shuffle_train: true
+
+  num_workers: 0
+  pin_memory: true
+  drop_last: true
