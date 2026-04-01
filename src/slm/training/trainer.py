@@ -58,6 +58,32 @@ class Trainer:
 
         self.grad_scaler = torch.cuda.amp.GradScaler(enabled=self._use_grad_scaler())
 
+    @classmethod
+    def from_components(cls, components: dict[str, Any]) -> "Trainer":
+        required = [
+            "model",
+            "optimizer",
+            "scheduler",
+            "train_loader",
+            "val_loader",
+            "trainer_cfg",
+            "callbacks",
+        ]
+        missing = [k for k in required if k not in components]
+        if missing:
+            raise KeyError(f"Missing trainer components: {missing}")
+
+        return cls(
+            model=components["model"],
+            optimizer=components["optimizer"],
+            scheduler=components["scheduler"],
+            train_loader=components["train_loader"],
+            val_loader=components["val_loader"],
+            config=components["trainer_cfg"],
+            callbacks=components["callbacks"],
+        )
+
+
     def _use_autocast(self) -> bool:
         return self.device.type == "cuda" and self.config.precision in {"fp16", "bf16"}
 
@@ -231,7 +257,6 @@ class Trainer:
 
         self.callbacks.on_eval_end(self, eval_outputs)
         self.model.train()
-
 
     def save_checkpoint(self, path: str | Path) -> None:
         path = Path(path)
