@@ -83,7 +83,6 @@ class Trainer:
             callbacks=components["callbacks"],
         )
 
-
     def _use_autocast(self) -> bool:
         return self.device.type == "cuda" and self.config.precision in {"fp16", "bf16"}
 
@@ -313,6 +312,9 @@ class Trainer:
                         self.state.step += 1
 
                         step_time = time.time() - self.state.started_at if self.state.started_at else None
+
+
+
                         self.state.extra["timing/elapsed_since_start_sec"] = step_time
 
                         if self.state.step % self.config.train_log_every == 0:

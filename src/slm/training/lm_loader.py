@@ -8,7 +8,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 
-from slm.training.data import DataLoaderConfig
+from .run_config import DataLoaderConfig
 
 
 def infer_token_dtype(bin_path: str | Path) -> np.dtype:
