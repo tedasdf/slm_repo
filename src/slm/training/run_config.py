@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Literal, Optional
-from slm.model.config import ModelConfig
 
 PrecisionType = Literal["fp32", "fp16", "bf16"]
 DeviceType = Literal["cpu", "cuda"]
@@ -95,6 +94,7 @@ class LoggingConfig:
     wandb_run_name: Optional[str] = None
     wandb_tags: list[str] = field(default_factory=list)
     wandb_config: Optional[dict] = None
+
 
 
 

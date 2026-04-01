@@ -95,23 +95,6 @@ def build_callbacks(logging_cfg: Any | None) -> list[Any]:
 
     return callbacks
 
-def build_trainer(run_cfg: Any, extra_callbacks: list[Any] | None = None) -> Trainer:
-    parts = assemble_training_components(run_cfg)
-
-    callbacks = list(parts["callbacks"])
-    if extra_callbacks is not None:
-        callbacks.extend(extra_callbacks)
-
-    trainer = Trainer(
-        model=parts["model"],
-        optimizer=parts["optimizer"],
-        scheduler=parts["scheduler"],
-        train_loader=parts["train_loader"],
-        val_loader=parts["val_loader"],
-        config=parts["trainer_cfg"],
-        callbacks=callbacks,
-    )
-    return trainer
 
 def assemble_training_components(run_cfg: Any) -> dict[str, Any]:
     """
@@ -139,3 +122,24 @@ def assemble_training_components(run_cfg: Any) -> dict[str, Any]:
         "callbacks": callbacks,
         "trainer_cfg": run_cfg.trainer,
     }
+
+
+
+
+def build_trainer(run_cfg: Any, extra_callbacks: list[Any] | None = None) -> Trainer:
+    parts = assemble_training_components(run_cfg)
+
+    callbacks = list(parts["callbacks"])
+    if extra_callbacks is not None:
+        callbacks.extend(extra_callbacks)
+
+    trainer = Trainer(
+        model=parts["model"],
+        optimizer=parts["optimizer"],
+        scheduler=parts["scheduler"],
+        train_loader=parts["train_loader"],
+        val_loader=parts["val_loader"],
+        config=parts["trainer_cfg"],
+        callbacks=callbacks,
+    )
+    return trainer
