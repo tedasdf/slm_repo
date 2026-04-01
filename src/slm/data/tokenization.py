@@ -13,8 +13,8 @@ from datasets import load_dataset
 from omegaconf import OmegaConf
 from tokenizers import Tokenizer, decoders, models, pre_tokenizers, trainers
 
-from slm.utils.config import resolve_config_paths
-from slm.utils.paths import finish_run, start_run
+from src.slm.utils.config import resolve_config_paths
+from src.slm.utils.paths import finish_run, start_run
 
 from .tokenizer import BPETokenizer
 from .config import PreprocessStageConfig

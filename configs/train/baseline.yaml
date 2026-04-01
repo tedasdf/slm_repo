@@ -1,49 +1,49 @@
-experiment:
-  model:
-    vocab_size: 32000
-    max_seq_len: 1024
 
-    num_layers: 8
-    model_dim: 512
+model:
+  vocab_size: 32000
+  max_seq_len: 1024
 
-    block_type: "baseline"
-    norm_type: "rmsnorm"
-    tie_embeddings: true
-    logit_softcap: null
+  num_layers: 8
+  model_dim: 512
 
-    attention:
-      attention_type: "baseline"
-      num_heads: 8
-      num_kv_heads: null
-      head_dim: null
-      rope_base: 10000.0
-      qk_gain_init: 1.0
-      window_size: null
+  block_type: "baseline"
+  norm_type: "rmsnorm"
+  tie_embeddings: true
+  logit_softcap: null
 
-    mlp:
-      mlp_type: "swiglu"
-      hidden_dim: null
-      mlp_mult: 4.0
+  attention:
+    attention_type: "baseline"
+    num_heads: 8
+    num_kv_heads: null
+    head_dim: null
+    rope_base: 10000.0
+    qk_gain_init: 1.0
+    window_size: null
 
-    init:
-      init_std: 0.02
-      tied_embed_init_std: null
+  mlp:
+    mlp_type: "swiglu"
+    hidden_dim: null
+    mlp_mult: 4.0
 
-  optimizer:
-    optimizer_type: "adamw"
-    lr: 0.0003
-    weight_decay: 0.1
-    beta1: 0.9
-    beta2: 0.95
-    eps: 1.0e-8
+  init:
+    init_std: 0.02
+    tied_embed_init_std: null
 
-  logging:
-    use_print_callback: true
-    use_wandb: false
-    wandb_project: "slm-runs"
-    wandb_run_name: "baseline"
-    wandb_tags:
-      - "baseline"
+optimizer:
+  optimizer_type: "adamw"
+  lr: 0.0003
+  weight_decay: 0.1
+  beta1: 0.9
+  beta2: 0.95
+  eps: 1.0e-8
+
+logging:
+  use_print_callback: true
+  use_wandb: false
+  wandb_project: "slm-runs"
+  wandb_run_name: "baseline"
+  wandb_tags:
+    - "baseline"
 
 trainer:
   device: "cuda"

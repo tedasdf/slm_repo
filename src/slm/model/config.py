@@ -22,7 +22,7 @@ BlockType = Literal["baseline"]
 
 @dataclass
 class AttentionConfig:
-    attention_type: AttentionType = "baseline"
+    attention_type: str = "baseline"
 
     # attention shape
     num_heads: int = 8
@@ -59,7 +59,7 @@ class AttentionConfig:
 
 @dataclass
 class MLPConfig:
-    mlp_type: MLPType = "swiglu"
+    mlp_type: str = "swiglu"
 
     # choose one of:
     # - hidden_dim directly
@@ -94,8 +94,8 @@ class ModelConfig:
     num_layers: int = 8
     model_dim: int = 512
 
-    block_type: BlockType = "baseline"
-    norm_type: NormType = "rmsnorm"
+    block_type: str = "baseline"
+    norm_type: str = "rmsnorm"
     tie_embeddings: bool = True
     logit_softcap: Optional[float] = None
 
