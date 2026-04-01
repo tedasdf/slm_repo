@@ -113,15 +113,29 @@ def build_trainer(run_cfg: Any, extra_callbacks: list[Any] | None = None) -> Tra
     )
     return trainer
 
+def assemble_training_components(run_cfg: Any) -> dict[str, Any]:
+    """
+    Expects run_cfg to contain at least:
+      - model
+      - optimizer
+      - trainer
+      - data
+    and optionally:
+      - scheduler
+      - logging
+    """
+    model = build_model(run_cfg.model)
+    optimizer = build_optimizer(model, run_cfg.optimizer)
+    scheduler = build_scheduler(optimizer, getattr(run_cfg, "scheduler", None))
+    train_loader, val_loader = build_dataloaders(run_cfg.data)
+    callbacks = build_callbacks(getattr(run_cfg, "logging", None))
 
-
-@dataclass
-class TrainingComponents:
-    model: nn.Module
-    optimizer: torch.optim.Optimizer
-    scheduler: Any | None
-    train_loader: Any
-    val_loader: Any | None
-    callbacks: list[Any]
-    trainer_cfg: TrainerConfig
-
+    return {
+        "model": model,
+        "optimizer": optimizer,
+        "scheduler": scheduler,
+        "train_loader": train_loader,
+        "val_loader": val_loader,
+        "callbacks": callbacks,
+        "trainer_cfg": run_cfg.trainer,
+    }

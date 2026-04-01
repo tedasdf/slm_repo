@@ -5,9 +5,9 @@ from pathlib import Path
 
 from omegaconf import OmegaConf
 
-from slm.training.builders import assemble_training_components
-from slm.training.run_config import RunConfig
-from slm.training.trainer import Trainer
+from .training.builders import assemble_training_components
+from .training.run_config import RunConfig
+from .training.trainer import Trainer
 
 
 def load_config(config_path: str | Path) -> RunConfig:
