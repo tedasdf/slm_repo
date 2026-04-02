@@ -2,8 +2,9 @@
 set -euo pipefail
 
 CONFIG_PATH="${1:-configs/data/tokenizer/base.yaml}"
+PYTHON_BIN="${PYTHON_BIN:-./.slm_wsl/bin/python}"
 
-OUTPUT="$(python -m slm.data.tokenization --config_path "$CONFIG_PATH")"
+OUTPUT="$($PYTHON_BIN -m src.slm.data.tokenization --config_path "$CONFIG_PATH")"
 
 echo "$OUTPUT"
 

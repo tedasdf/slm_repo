@@ -8,7 +8,9 @@ from typing import Optional
 class DatasetConfig:
     source_type: str = "huggingface"
     dataset_name: str = ""
-
+    dataset_config_name: str = ""
+    data_files_glob: str = ""
+    
     # actual split names in the source dataset
     train_split_name: str = "train"
     val_split_name: Optional[str] = None
@@ -70,6 +72,7 @@ class PreprocessConfig:
     target_train_tokens: int = 100_000_000
     target_val_tokens: int = 5_000_000
     target_test_tokens: int = 0
+    shard_target_bytes: int = 256 * 1024 * 1024
 
     # create splits from train if missing
     val_fraction: float = 0.0

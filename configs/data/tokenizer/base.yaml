@@ -1,18 +1,21 @@
-version: 'v_1'
+version: "dolma_v1_6_sample_bpe16k"
 
 dataset:
   source_type: "huggingface"
-  dataset_name: "julien040/hacker-news-posts"
+  data_files_glob: "./artifacts/data/dolma_v1_6_sample/**/*.json.gz"
+
+  dataset_name: "allenai/dolma3_mix-6T"
+  dataset_config_name: "default"
 
   train_split_name: "train"
   val_split_name: null
   test_split_name: null
 
   text_fields:
-    - "title"
+    - "text"
 
   cache_dir: "artifacts/data/hf_cache"
-  streaming: false
+  streaming: true
 
   max_train_samples: null
   max_val_samples: null
@@ -32,8 +35,8 @@ tokenizer:
   unk_token: "<unk>"
   bos_token: null
 
-  reuse_existing: true
-  tokenizer_train_samples: 200000
+  reuse_existing: false
+  tokenizer_train_samples: 500000
 
 preprocess:
   block_size: 256
@@ -44,12 +47,14 @@ preprocess:
   append_eos: true
   drop_short_sequences: true
 
-  target_train_tokens: 8000000
-  target_val_tokens: 500000
+  target_train_tokens: 100000000
+  target_val_tokens: 1000000
   target_test_tokens: 0
 
   val_fraction: 0.01
   split_seed: 42
+
+  shard_target_bytes: 268435456
 
   num_proc: 4
   debug: false

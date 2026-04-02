@@ -7,7 +7,10 @@ import hashlib
 import os
 from pathlib import Path
 from typing import Iterator, Optional
-
+import glob
+import json
+import random
+import zstandard as zstd
 import numpy as np
 from datasets import load_dataset
 from omegaconf import OmegaConf
@@ -86,6 +89,49 @@ def iter_huggingface_examples(
 
     ds = load_dataset(
         dataset_cfg.dataset_name,
+        name=dataset_cfg.dataset_config_name,
+        split=split_name,
+        streaming=dataset_cfg.streaming,
+        cache_dir=dataset_cfg.cache_dir,
+    )
+    if dataset_cfg.shuffle:
+        if dataset_cfg.streaming:
+            ds = ds.shuffle(seed=seed, buffer_size=dataset_cfg.shuffle_buffer_size)
+        else:
+            ds = ds.shuffle(seed=seed)
+
+    hard_cap = 1000 if smoke_test else max_samples
+
+    count = 0
+    for row in ds:
+        if hard_cap is not None and count >= hard_cap:
+            break
+        count += 1
+        yield row
+
+def iter_examples(
+    dataset_cfg,
+    split_name: str,
+    seed: int,
+    smoke_test: bool = False,
+    max_samples: Optional[int] = None,
+):
+    if dataset_cfg.source_type == "dolma_local":
+        yield from iter_dolma_jsonl_zst_examples(
+            dataset_cfg=dataset_cfg,
+            seed=seed,
+            smoke_test=smoke_test,
+            max_samples=max_samples,
+        )
+        return
+
+    if dataset_cfg.source_type != "huggingface":
+        raise ValueError(f"Unsupported source_type: {dataset_cfg.source_type}")
+    
+    os.environ["DATA_DIR"] = 'dolma'
+    
+    ds = load_dataset(
+        dataset_cfg.dataset_name,
         split=split_name,
         streaming=dataset_cfg.streaming,
         cache_dir=dataset_cfg.cache_dir,
@@ -106,6 +152,41 @@ def iter_huggingface_examples(
         count += 1
         yield row
 
+
+
+def iter_dolma_jsonl_zst_examples(
+    dataset_cfg,
+    seed: int,
+    smoke_test: bool = False,
+    max_samples: Optional[int] = None,
+):
+    pattern = dataset_cfg.data_files_glob
+    paths = sorted(glob.glob(pattern, recursive=True))
+    if not paths:
+        raise ValueError(f"No Dolma files matched: {pattern}")
+
+    if dataset_cfg.shuffle:
+        rng = random.Random(seed)
+        rng.shuffle(paths)
+
+    hard_cap = 1000 if smoke_test else max_samples
+    count = 0
+
+    for path in paths:
+        with open(path, "rb") as f:
+            dctx = zstd.ZstdDecompressor()
+            with dctx.stream_reader(f) as reader:
+                text_stream = reader.read().decode("utf-8").splitlines()
+
+            for line in text_stream:
+                if hard_cap is not None and count >= hard_cap:
+                    return
+                if not line.strip():
+                    continue
+
+                row = json.loads(line)
+                count += 1
+                yield row
 
 
 # use text -> hash to determin the key -> validation/train
@@ -149,7 +230,7 @@ def iter_final_split_texts(
     preprocess_cfg = cfg.preprocess
 
     if role == "val" and dataset_cfg.val_split_name is not None:
-        for row in iter_huggingface_examples(
+        for row in iter_examples(
             dataset_cfg,
             split_name=dataset_cfg.val_split_name,
             seed=dataset_cfg.seed + 2,
@@ -164,7 +245,7 @@ def iter_final_split_texts(
     if role == "test":
         if dataset_cfg.test_split_name is None:
             return
-        for row in iter_huggingface_examples(
+        for row in iter_examples(
             dataset_cfg,
             split_name=dataset_cfg.test_split_name,
             seed=dataset_cfg.seed + 3,
@@ -177,7 +258,7 @@ def iter_final_split_texts(
         return
 
     # source train split
-    for row in iter_huggingface_examples(
+    for row in iter_examples(
         dataset_cfg,
         split_name=dataset_cfg.train_split_name,
         seed=dataset_cfg.seed + 1,
