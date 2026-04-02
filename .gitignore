@@ -1,3 +1,8 @@
-artifacts
+artifacts/**
+!artifacts/**/
+!artifacts/**/*.dvc
 
 __pycache__
+*/__pycache__/
+
+.env

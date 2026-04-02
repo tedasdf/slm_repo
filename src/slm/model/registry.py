@@ -15,18 +15,17 @@ from .attention import (
     XSAGQACausalSelfAttention,
     XSASlidingWindowCausalSelfAttention,
     XSASlidingWindowGQACausalSelfAttention,
-    
 )
 
 ATTENTION_REGISTRY: dict[str, type[nn.Module]] = {
     "gqa": CausalSelfAttention,
     "baseline": CausalSelfAttention,
-    "swa": SlidingWindowCausalSelfAttention,
-    "gqa_swa": SlidingWindowGQACausalSelfAttention,
-    "xsa": XSACausalSelfAttention,
-    "xsa_gqa": XSAGQACausalSelfAttention,
-    "xsa_swa": XSASlidingWindowCausalSelfAttention,
-    "xsa_gqa_swa": XSASlidingWindowGQACausalSelfAttention,
+    # "swa": SlidingWindowCausalSelfAttention,
+    # "gqa_swa": SlidingWindowGQACausalSelfAttention,
+    # "xsa": XSACausalSelfAttention,
+    # "xsa_gqa": XSAGQACausalSelfAttention,
+    # "xsa_swa": XSASlidingWindowCausalSelfAttention,
+    # "xsa_gqa_swa": XSASlidingWindowGQACausalSelfAttention,
 }
 
 MLP_REGISTRY: dict[str, type[nn.Module]] = {

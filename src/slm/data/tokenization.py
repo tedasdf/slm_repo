@@ -23,10 +23,6 @@ from .config import PreprocessStageConfig
 class PreprocessArtifactPaths:
     tokenizer_path: str
     splits_dir: str
-    train_bin_path: str
-    val_bin_path: str
-    test_bin_path: str
-
 
 
 # helper functions
@@ -40,6 +36,7 @@ def load_config(config_path: str) -> PreprocessStageConfig:
         raise ValueError(f"Missing config fields: {sorted(missing)}")
 
     return OmegaConf.to_object(merged)
+
 def prepare_preprocess_artifacts(run_dir: str) -> PreprocessArtifactPaths:
     splits_dir = os.path.join(run_dir, "splits")
     os.makedirs(splits_dir, exist_ok=True)
@@ -47,9 +44,6 @@ def prepare_preprocess_artifacts(run_dir: str) -> PreprocessArtifactPaths:
     return PreprocessArtifactPaths(
         tokenizer_path=os.path.join(run_dir, "tokenizer.json"),
         splits_dir=splits_dir,
-        train_bin_path=os.path.join(splits_dir, "train.bin"),
-        val_bin_path=os.path.join(splits_dir, "val.bin"),
-        test_bin_path=os.path.join(splits_dir, "test.bin"),
     )
 
 def choose_bin_dtype(vocab_size: int):
@@ -58,7 +52,6 @@ def choose_bin_dtype(vocab_size: int):
     if vocab_size <= np.iinfo(np.uint32).max:
         return np.uint32
     raise ValueError("Vocab too large for uint32 token storage.")
-
 
 
 # iterate through text
@@ -292,9 +285,9 @@ def encode_and_write_bins(
 
     train_target, val_target, test_target = _adjust_targets(preprocess_cfg, smoke_test)
 
-    train_bin_path = Path(artifacts.train_bin_path)
-    val_bin_path = Path(artifacts.val_bin_path)
-    test_bin_path = Path(artifacts.test_bin_path)
+    train_path = Path(artifacts.splits_dir) / "train"
+    val_path = Path(artifacts.splits_dir) / "val"
+    test_path = Path(artifacts.splits_dir) / "test"
 
     eos_id = tok.token_to_id(tokenizer_cfg.eos_token)
     bin_dtype = choose_bin_dtype(tok.vocab_size)
@@ -312,32 +305,64 @@ def encode_and_write_bins(
         "bin_dtype": np.dtype(bin_dtype).name,
     }
 
-    def write_split(text_iter, file_path: Path, token_key, char_key, sample_key, target_tokens):
+    def write_split(text_iter, split_dir: Path, token_key, char_key, sample_key, target_tokens):
         if target_tokens <= 0:
             return
-        with file_path.open("wb") as f:
+
+        split_dir.mkdir(parents=True, exist_ok=True)
+
+        shard_target_bytes = getattr(preprocess_cfg, "shard_target_bytes", 256 * 1024 * 1024)
+        split_name = split_dir.name
+
+        shard_idx = 0
+        shard_bytes = 0
+        f = None
+
+        def open_new_shard(idx: int):
+            path = split_dir / f"{split_name}_{idx:06d}.bin"
+            return path.open("wb")
+
+        try:
+            f = open_new_shard(shard_idx)
+
             for text in text_iter:
                 ids = tok.encode(text)
                 if preprocess_cfg.append_eos:
                     ids.append(eos_id)
                 if not ids:
                     continue
+
                 arr = np.asarray(ids, dtype=bin_dtype)
-                n_chars = len(text) + (len(tokenizer_cfg.eos_token) if preprocess_cfg.append_eos else 0)
+                sample_bytes = arr.nbytes
+
+                if shard_bytes > 0 and shard_bytes + sample_bytes > shard_target_bytes:
+                    f.close()
+                    shard_idx += 1
+                    f = open_new_shard(shard_idx)
+                    shard_bytes = 0
+
+                n_chars = len(text) + (
+                    len(tokenizer_cfg.eos_token) if preprocess_cfg.append_eos else 0
+                )
                 _write_encoded(arr, f, token_key, char_key, sample_key, stats, n_chars)
+                shard_bytes += sample_bytes
+
                 if stats[token_key] >= target_tokens:
                     break
+        finally:
+            if f is not None:
+                f.close()
 
     write_split(
         iter_final_split_texts(cfg, role="train", smoke_test=smoke_test),
-        train_bin_path,
+        train_path,
         "train_tokens", "train_chars", "train_samples",
         train_target,
     )
 
     write_split(
         iter_final_split_texts(cfg, role="val", smoke_test=smoke_test),
-        val_bin_path,
+        val_path,
         "val_tokens", "val_chars", "val_samples",
         val_target,
     )
@@ -345,7 +370,7 @@ def encode_and_write_bins(
     if getattr(cfg.dataset, "test_split_name", None) is not None and test_target > 0:
         write_split(
             iter_final_split_texts(cfg, role="test", smoke_test=smoke_test),
-            test_bin_path,
+            test_path,
             "test_tokens", "test_chars", "test_samples",
             test_target,
         )
@@ -405,19 +430,26 @@ def run_single_config(config_path: Path, smoke_test: bool) -> None:
             artifacts=asdict(artifact_paths),
             stats=stats,
         )
+        return ctx.run_dir
     except Exception as e:
         finish_run(ctx.manifest_path, status="failed", extras={"error": str(e)})
         raise
+
             
 
 def main(parser) -> None:
     # find paths 
     config_paths = resolve_config_paths(parser.config_path)
     print(f"Found {len(config_paths)} config file(s).")
+
+    run_dirs = []
     for config_path in config_paths:
         # individual config 
-        run_single_config(config_path, smoke_test=parser.smoke_test)
+        run_dir = run_single_config(config_path, smoke_test=parser.smoke_test)
+        run_dirs.append(run_dir)
 
+    for run_dir in run_dirs:
+        print(f"RUN_DIR={run_dir}")
 
 if __name__ == "__main__":
 

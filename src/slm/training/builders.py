@@ -13,10 +13,20 @@ from .logging import PrintMetricsCallback, WandBCallback
 from .trainer import Trainer
 
 
-
 def build_model(model_cfg: ModelConfig) -> nn.Module:
-    return TransformerLM(model_cfg)
+    from torch.backends.cuda import (
+        enable_cudnn_sdp,
+        enable_flash_sdp,
+        enable_math_sdp,
+        enable_mem_efficient_sdp,
+    )
 
+    enable_cudnn_sdp(False)
+    enable_flash_sdp(True)
+    enable_mem_efficient_sdp(False)
+    enable_math_sdp(False)
+
+    return TransformerLM(model_cfg)
 
 def build_optimizer(model: nn.Module, optimizer_cfg: Any) -> torch.optim.Optimizer:
     optimizer_type = getattr(optimizer_cfg, "optimizer_type", "adamw").lower()
