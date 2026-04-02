@@ -52,9 +52,6 @@ class Trainer:
             "cuda" if config.device == "cuda" and torch.cuda.is_available() else "cpu"
         )
         self.model.to(self.device)
-        print(self.device)
-        raise ValueError
-
 
         if self.config.compile_model and hasattr(torch, "compile"):
             self.model = torch.compile(self.model)
