@@ -4,6 +4,7 @@ import argparse
 from dataclasses import asdict, dataclass
 import itertools
 import hashlib
+import gzip
 import os
 from pathlib import Path
 from typing import Iterator, Optional
@@ -117,7 +118,7 @@ def iter_examples(
     max_samples: Optional[int] = None,
 ):
     if dataset_cfg.source_type == "dolma_local":
-        yield from iter_dolma_jsonl_zst_examples(
+        yield from iter_dolma_json_gz_examples(
             dataset_cfg=dataset_cfg,
             seed=seed,
             smoke_test=smoke_test,
@@ -153,8 +154,7 @@ def iter_examples(
         yield row
 
 
-
-def iter_dolma_jsonl_zst_examples(
+def iter_dolma_json_gz_examples(
     dataset_cfg,
     seed: int,
     smoke_test: bool = False,
@@ -173,12 +173,8 @@ def iter_dolma_jsonl_zst_examples(
     count = 0
 
     for path in paths:
-        with open(path, "rb") as f:
-            dctx = zstd.ZstdDecompressor()
-            with dctx.stream_reader(f) as reader:
-                text_stream = reader.read().decode("utf-8").splitlines()
-
-            for line in text_stream:
+        with gzip.open(path, "rt", encoding="utf-8") as f:
+            for line in f:
                 if hard_cap is not None and count >= hard_cap:
                     return
                 if not line.strip():
@@ -187,7 +183,6 @@ def iter_dolma_jsonl_zst_examples(
                 row = json.loads(line)
                 count += 1
                 yield row
-
 
 # use text -> hash to determin the key -> validation/train
 def stable_example_key(row: dict, text_fields: list[str]) -> str:

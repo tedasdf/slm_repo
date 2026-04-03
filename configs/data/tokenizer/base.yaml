@@ -1,7 +1,7 @@
 version: "dolma_v1_6_sample_bpe16k"
 
 dataset:
-  source_type: "huggingface"
+  source_type: "dolma_local"
   data_files_glob: "./artifacts/data/dolma_v1_6_sample/**/*.json.gz"
 
   dataset_name: "allenai/dolma3_mix-6T"
