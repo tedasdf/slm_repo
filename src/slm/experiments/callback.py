@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from .callbacks import Callback  # use the same base Callback you already use
+from src.slm.training import Callback  # use the same base Callback you already use
 
 
 def _is_number(x: Any) -> bool:
