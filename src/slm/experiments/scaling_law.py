@@ -7,8 +7,8 @@ from typing import Any
 
 from callback import ExternalWandBCallback
 from base import BaseExperiment
-from training.run_config import RunConfig
-from training.builders import build_model, build_trainer
+from src.slm.training import RunConfig
+from src.slm.training.builders import build_model, build_trainer
 
 
 @dataclass
