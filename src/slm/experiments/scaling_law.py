@@ -5,8 +5,8 @@ from copy import deepcopy
 from dataclasses import asdict, dataclass
 from typing import Any
 
-from callback import ExternalWandBCallback
-from base import BaseExperiment
+from .callback import ExternalWandBCallback
+from .base import BaseExperiment
 from src.slm.training import RunConfig
 from src.slm.training.builders import build_model, build_trainer
 
