@@ -1,27 +1,104 @@
 from __future__ import annotations
 
+import math
 from copy import deepcopy
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from typing import Any
 
+from callback import ExternalWandBCallback
 import wandb
 
-from slm.experiments.base import BaseExperiment
-from slm.training.builders import build_trainer
-from slm.training.run_config import RunConfig
+from src.slm.training.builders import build_model, build_trainer
+
+
+@dataclass
+class ScalingLawExperimentConfig:
+    compute_start: float
+    compute_end: float
+    compute_step: float
+
+    ratio_start: float
+    ratio_end: float
+    ratio_step: float
+
+    layers_list: tuple[int, ...]
+    dims_list: tuple[int, ...]
+
+    seed_values: tuple[int, ...] = (42,)
+    train_flops_coeff: float = 6.0
+    prefer_under_target: bool = True
 
 
 class ScalingLawExperiment(BaseExperiment):
-    def __init__(self, base_cfg: RunConfig) -> None:
+    def __init__(self, base_cfg: RunConfig, experiment_cfg: ScalingLawExperimentConfig) -> None:
         super().__init__(base_cfg)
 
-    
+        self.experiment_cfg = experiment_cfg
+
+        self.compute_budgets = [
+            round(experiment_cfg.compute_start + i * experiment_cfg.compute_step, 12)
+            for i in range(
+                int((experiment_cfg.compute_end - experiment_cfg.compute_start) / experiment_cfg.compute_step) + 1
+            )
+        ]
+        self.data_param_ratios = [
+            round(experiment_cfg.ratio_start + i * experiment_cfg.ratio_step, 12)
+            for i in range(
+                int((experiment_cfg.ratio_end - experiment_cfg.ratio_start) / experiment_cfg.ratio_step) + 1
+            )
+        ]
+
+        self.legal_num_layers = list(experiment_cfg.layers_list)
+        self.legal_model_dims = list(experiment_cfg.dims_list)
+
+        self.candidate_models = self._build_candidate_models()
+        self._param_count_cache: dict[tuple[int, int, int, int], int] = {}
+
+    def _infer_head_dim(self) -> int:
+        attn = self.base_cfg.model.attention
+
+        if getattr(attn, "head_dim", None) is not None:
+            return int(attn.head_dim)
+
+        num_heads = getattr(attn, "num_heads", None)
+        model_dim = getattr(self.base_cfg.model, "model_dim", None)
+
+        if num_heads is not None and model_dim is not None:
+            num_heads = int(num_heads)
+            model_dim = int(model_dim)
+            if num_heads > 0 and model_dim % num_heads == 0:
+                return model_dim // num_heads
+
+        return 64
+
+    def _build_candidate_models(self) -> list[dict[str, int]]:
+        candidates: list[dict[str, int]] = []
+        head_dim = self._infer_head_dim()
+
+        for num_layers in self.legal_num_layers:
+            for model_dim in self.legal_model_dims:
+                if model_dim % head_dim != 0:
+                    continue
+
+                num_heads = model_dim // head_dim
+                if num_heads <= 0:
+                    continue
+
+                candidates.append(
+                    {
+                        "num_layers": int(num_layers),
+                        "model_dim": int(model_dim),
+                        "num_heads": int(num_heads),
+                        "head_dim": int(head_dim),
+                    }
+                )
+
+        if not candidates:
+            raise ValueError("No valid candidate models were generated.")
+
+        return candidates
 
     def make_sweep_config(self) -> dict[str, Any]:
-        """
-        Flat parameter names make wandb sweeps easier to work with.
-        Adjust the values however you want.
-        """
         return {
             "method": "grid",
             "metric": {
@@ -30,87 +107,225 @@ class ScalingLawExperiment(BaseExperiment):
             },
             "parameters": {
                 "experiment_name": {
-                    "values": ["scaling_law"]
-                },
-                "num_layers": {
-                    "values": [6, 8, 10]
-                },
-                "model_dim": {
-                    "values": [384, 512, 640]
-                },
-                "attention_type": {
-                    "values": ["baseline"]
+                    "values": ["scaling_law_fixed_compute"]
                 },
                 "compute_budget": {
-                    "values": ["1.25e16", "2.50e16"]
+                    "values": self.compute_budgets
+                },
+                "data_param_ratio": {
+                    "values": self.data_param_ratios
                 },
                 "seed": {
-                    "values": [42]
+                    "values": list(self.experiment_cfg.seed_values)
                 },
             },
         }
 
-    def apply_overrides(self, cfg: RunConfig, sweep_cfg: Any) -> RunConfig:
-        """
-        Takes the base run config and applies wandb sweep overrides.
-        """
+    def _resolve_targets_from_compute(
+        self,
+        *,
+        compute_budget: float,
+        data_param_ratio: float,
+    ) -> dict[str, float]:
+        if compute_budget <= 0:
+            raise ValueError("compute_budget must be > 0")
+        if data_param_ratio <= 0:
+            raise ValueError("data_param_ratio must be > 0")
+
+        k = float(self.experiment_cfg.train_flops_coeff)
+
+        # C ~= k * N * D and D/N = r
+        # => N = sqrt(C / (k*r)), D = r*N
+        target_params = math.sqrt(compute_budget / (k * data_param_ratio))
+        target_train_tokens = data_param_ratio * target_params
+
+        return {
+            "target_params": float(target_params),
+            "target_train_tokens": float(target_train_tokens),
+        }
+
+    def _estimate_param_count(
+        self,
+        *,
+        num_layers: int,
+        model_dim: int,
+        num_heads: int,
+        head_dim: int,
+    ) -> int:
+        key = (int(num_layers), int(model_dim), int(num_heads), int(head_dim))
+        cached = self._param_count_cache.get(key)
+        if cached is not None:
+            return cached
+
+        cfg = deepcopy(self.base_cfg)
+        cfg.model.num_layers = int(num_layers)
+        cfg.model.model_dim = int(model_dim)
+        cfg.model.attention.num_heads = int(num_heads)
+        cfg.model.attention.head_dim = int(head_dim)
+
+        model = build_model(cfg.model)
+        n_params = sum(p.numel() for p in model.parameters())
+
+        self._param_count_cache[key] = int(n_params)
+        return int(n_params)
+
+    def _choose_candidate_model(self, *, target_params: float) -> dict[str, Any]:
+        scored_candidates: list[dict[str, Any]] = []
+
+        for candidate in self.candidate_models:
+            actual_params = self._estimate_param_count(
+                num_layers=candidate["num_layers"],
+                model_dim=candidate["model_dim"],
+                num_heads=candidate["num_heads"],
+                head_dim=candidate["head_dim"],
+            )
+
+            rel_error = abs(actual_params - target_params) / max(target_params, 1.0)
+
+            scored_candidates.append(
+                {
+                    **candidate,
+                    "actual_params": int(actual_params),
+                    "param_rel_error": float(rel_error),
+                }
+            )
+
+        if self.experiment_cfg.prefer_under_target:
+            under = [c for c in scored_candidates if c["actual_params"] <= target_params]
+            if under:
+                scored_candidates = under
+
+        best = min(scored_candidates, key=lambda c: c["param_rel_error"])
+        return best
+
+    def _tokens_per_step(self, cfg: RunConfig) -> int:
+        trainer = cfg.trainer
+
+        if hasattr(trainer, "effective_train_batch_tokens"):
+            value = int(trainer.effective_train_batch_tokens)
+            if value > 0:
+                return value
+
+        if hasattr(trainer, "micro_batch_tokens_per_rank"):
+            micro = int(trainer.micro_batch_tokens_per_rank)
+            grad_accum = int(getattr(trainer, "grad_accum_steps", 1))
+            world_size = int(getattr(cfg.run, "world_size", 1)) if hasattr(cfg, "run") else 1
+            value = micro * grad_accum * world_size
+            if value > 0:
+                return value
+
+        batch_size = getattr(cfg.data, "batch_size", None)
+        seq_len = getattr(cfg.trainer, "train_seq_len", None)
+        if seq_len is None:
+            seq_len = getattr(cfg.model, "max_seq_len", None)
+
+        if batch_size is not None and seq_len is not None:
+            value = int(batch_size) * int(seq_len)
+            if value > 0:
+                return value
+
+        raise ValueError(
+            "Could not infer tokens_per_step. "
+            "Expose trainer.effective_train_batch_tokens or equivalent."
+        )
+
+    def _resolve_run_limits(
+        self,
+        *,
+        cfg: RunConfig,
+        compute_budget: float,
+        actual_params: int,
+    ) -> dict[str, int]:
+        k = float(self.experiment_cfg.train_flops_coeff)
+
+        actual_target_train_tokens = int(compute_budget / (k * max(actual_params, 1)))
+        actual_target_train_tokens = max(actual_target_train_tokens, 1)
+
+        tokens_per_step = self._tokens_per_step(cfg)
+        max_steps = max(1, math.ceil(actual_target_train_tokens / tokens_per_step))
+
+        return {
+            "actual_target_train_tokens": int(actual_target_train_tokens),
+            "tokens_per_step": int(tokens_per_step),
+            "max_steps": int(max_steps),
+        }
+
+    def apply_overrides(
+        self,
+        cfg: RunConfig,
+        sweep_cfg: Any,
+    ) -> tuple[RunConfig, dict[str, Any]]:
         cfg = deepcopy(cfg)
 
-        # experiment metadata
         if hasattr(sweep_cfg, "experiment_name"):
             cfg.experiment.experiment_name = str(sweep_cfg.experiment_name)
+        cfg.experiment.experiment_type = "scaling_law_fixed_compute"
 
-        cfg.experiment.experiment_type = "scaling_law"
+        compute_budget = float(sweep_cfg.compute_budget)
+        data_param_ratio = float(sweep_cfg.data_param_ratio)
 
-        # model overrides
-        if hasattr(sweep_cfg, "num_layers"):
-            cfg.model.num_layers = int(sweep_cfg.num_layers)
+        theoretical = self._resolve_targets_from_compute(
+            compute_budget=compute_budget,
+            data_param_ratio=data_param_ratio,
+        )
 
-        if hasattr(sweep_cfg, "model_dim"):
-            cfg.model.model_dim = int(sweep_cfg.model_dim)
+        chosen = self._choose_candidate_model(
+            target_params=theoretical["target_params"]
+        )
 
-        if hasattr(sweep_cfg, "attention_type"):
-            cfg.model.attention.attention_type = str(sweep_cfg.attention_type)
-
-        # optimizer overrides
-        if hasattr(sweep_cfg, "lr"):
-            cfg.optimizer.lr = float(sweep_cfg.lr)
-
-        # trainer overrides
-        if hasattr(sweep_cfg, "max_steps"):
-            cfg.trainer.max_steps = int(sweep_cfg.max_steps)
-
-        # data overrides
-        if hasattr(sweep_cfg, "batch_size"):
-            cfg.data.batch_size = int(sweep_cfg.batch_size)
+        cfg.model.num_layers = int(chosen["num_layers"])
+        cfg.model.model_dim = int(chosen["model_dim"])
+        cfg.model.attention.num_heads = int(chosen["num_heads"])
+        cfg.model.attention.head_dim = int(chosen["head_dim"])
 
         if hasattr(sweep_cfg, "seed"):
-            seed = int(sweep_cfg.seed)
-            cfg.data.seed = seed
+            cfg.data.seed = int(sweep_cfg.seed)
 
-        # logging
-        # IMPORTANT: the experiment owns wandb.init() for sweeps,
-        # so disable trainer-level wandb callback for sweep runs.
+        limits = self._resolve_run_limits(
+            cfg=cfg,
+            compute_budget=compute_budget,
+            actual_params=int(chosen["actual_params"]),
+        )
+
+        cfg.trainer.max_steps = int(limits["max_steps"])
+
+        if hasattr(cfg.trainer, "target_train_tokens"):
+            cfg.trainer.target_train_tokens = int(limits["actual_target_train_tokens"])
+
+        # Important: sweep run owns W&B, not trainer logging config.
         cfg.logging.use_wandb = False
 
-        # tags / metadata
-        if hasattr(sweep_cfg, "compute_budget"):
-            cfg.experiment.tags.append(f"budget:{sweep_cfg.compute_budget}")
-
+        cfg.experiment.tags.append(f"budget:{compute_budget:.3e}")
+        cfg.experiment.tags.append(f"ratio:{data_param_ratio:.6g}")
         cfg.experiment.tags.append(f"layers:{cfg.model.num_layers}")
         cfg.experiment.tags.append(f"dim:{cfg.model.model_dim}")
-        cfg.experiment.tags.append(f"attn:{cfg.model.attention.attention_type}")
+        cfg.experiment.tags.append(f"heads:{cfg.model.attention.num_heads}")
 
-        return cfg
+        resolved = {
+            "compute_budget": float(compute_budget),
+            "data_param_ratio": float(data_param_ratio),
+            "theoretical_target_params": float(theoretical["target_params"]),
+            "theoretical_target_train_tokens": float(theoretical["target_train_tokens"]),
+            "resolved_num_layers": int(chosen["num_layers"]),
+            "resolved_model_dim": int(chosen["model_dim"]),
+            "resolved_num_heads": int(chosen["num_heads"]),
+            "resolved_head_dim": int(chosen["head_dim"]),
+            "actual_params": int(chosen["actual_params"]),
+            "param_rel_error": float(chosen["param_rel_error"]),
+            "actual_target_train_tokens": int(limits["actual_target_train_tokens"]),
+            "tokens_per_step": int(limits["tokens_per_step"]),
+            "max_steps": int(limits["max_steps"]),
+        }
+
+        return cfg, resolved
 
     def train_one_run(self) -> None:
         with wandb.init(
             project=self.base_cfg.logging.wandb_project,
             tags=self.base_cfg.logging.wandb_tags + self.base_cfg.experiment.tags,
         ) as run:
-            cfg = self.apply_overrides(self.base_cfg, run.config)
+            cfg, resolved = self.apply_overrides(self.base_cfg, run.config)
 
-            # Save the fully resolved run config into wandb
             run.config.update(
                 {
                     "experiment": asdict(cfg.experiment),
@@ -120,46 +335,18 @@ class ScalingLawExperiment(BaseExperiment):
                     "trainer": asdict(cfg.trainer),
                     "data": asdict(cfg.data),
                     "logging": asdict(cfg.logging),
+                    "resolved": resolved,
                 },
                 allow_val_change=True,
             )
 
-            trainer = build_trainer(cfg)
-            state = trainer.train()
+            trainer = build_trainer(
+                cfg,
+                extra_callbacks=[ExternalWandBCallback(run=run)],
+            )
+            trainer.train()
 
-            summary = {
-                "experiment/name": cfg.experiment.experiment_name,
-                "experiment/type": cfg.experiment.experiment_type,
-                "model/num_layers": cfg.model.num_layers,
-                "model/model_dim": cfg.model.model_dim,
-                "model/attention_type": cfg.model.attention.attention_type,
-                "optimizer/lr": cfg.optimizer.lr,
-                "trainer/max_steps": cfg.trainer.max_steps,
-                "data/batch_size": cfg.data.batch_size,
-                "train/final_loss": state.last_train_loss,
-                "eval/best_val_loss": state.best_val_loss,
-                "runtime/elapsed_seconds": state.elapsed_seconds,
-                "data/train_tokens_seen": state.train_tokens_seen,
-                "data/train_samples_seen": state.train_samples_seen,
-            }
-
-            # optional diagnostics if trainer/callbacks filled them
-            for key in [
-                "diagnostics/grad_norm",
-                "diagnostics/has_nan_or_inf_loss",
-                "timing/elapsed_since_start_sec",
-            ]:
-                value = state.extra.get(key)
-                if value is not None:
-                    summary[key] = value
-
-            # carry sweep-specific metadata through
-            if hasattr(run.config, "compute_budget"):
-                summary["budget/compute_target"] = run.config.compute_budget
-
-            wandb.log(summary, step=state.step)
-
-    def run(self, count: int | None = None) -> str:
+    def sweep_fixed_compute(self, count: int | None = None) -> str:
         sweep_config = self.make_sweep_config()
 
         sweep_id = wandb.sweep(
@@ -175,14 +362,9 @@ class ScalingLawExperiment(BaseExperiment):
 
         return sweep_id
 
+    def run(self, count: int | None = None) -> str:
+        return self.sweep_fixed_compute(count=count)
 
-    # fixed compute budget:
-
-    # fixed compute time:
-
-
-
-    # equation for analyzing 
     def analyze_results(self, *args: Any, **kwargs: Any) -> Any:
         raise NotImplementedError(
             "ScalingLawExperiment.analyze_results() not implemented yet."

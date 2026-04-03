@@ -74,6 +74,84 @@ class CausalSelfAttention(nn.Module):
         return self.out_proj(y)
 
 
+
+class XSACausalSelfAttention(nn.Module):
+    def __init__(
+        self,
+        dim: int,
+        num_heads: int,
+        num_kv_heads: int,
+        rope_base: float,
+        qk_gain_init: float,
+        window_size: int | None = None,  # ignored, kept for constructor compatibility
+    ):
+        super().__init__()
+        if dim % num_heads != 0:
+            raise ValueError("model_dim must be divisible by num_heads")
+        if num_kv_heads != num_heads:
+            raise ValueError("XSACausalSelfAttention expects num_kv_heads == num_heads")
+        if window_size is not None:
+            raise ValueError("XSACausalSelfAttention does not use window_size")
+
+        self.num_heads = num_heads
+        self.num_kv_heads = num_kv_heads
+        self.head_dim = dim // num_heads
+
+        if self.head_dim % 2 != 0:
+            raise ValueError("head_dim must be even for RoPE")
+
+        kv_dim = self.num_kv_heads * self.head_dim
+
+        self.q_proj = nn.Linear(self.model_dim, self.num_heads * self.head_dim, bias=False)
+        self.k_proj = nn.Linear(self.model_dim, self.num_kv_heads * self.head_dim, bias=False)
+        self.v_proj = nn.Linear(self.model_dim, self.num_kv_heads * self.head_dim, bias=False)
+        self.c_q = CastedLinear(dim, dim, bias=False)
+        self.c_k = CastedLinear(dim, kv_dim, bias=False)
+        self.c_v = CastedLinear(dim, kv_dim, bias=False)
+        self.proj = CastedLinear(dim, dim, bias=False)
+        self.proj._zero_init = True
+
+        self.q_gain = nn.Parameter(
+            torch.full((num_heads,), qk_gain_init, dtype=torch.float32)
+        )
+        self.rotary = Rotary(self.head_dim, base=rope_base)
+
+    def forward(self, x: Tensor) -> Tensor:
+        bsz, seqlen, dim = x.shape
+
+        q = self.c_q(x).reshape(bsz, seqlen, self.num_heads, self.head_dim).transpose(1, 2)
+        k = self.c_k(x).reshape(bsz, seqlen, self.num_kv_heads, self.head_dim).transpose(1, 2)
+        v = self.c_v(x).reshape(bsz, seqlen, self.num_kv_heads, self.head_dim).transpose(1, 2)
+
+        q = F.rms_norm(q, (q.size(-1),))
+        k = F.rms_norm(k, (k.size(-1),))
+
+        cos, sin = build_rope_cache(
+            seq_len=seqlen,
+            head_dim=self.head_dim,
+            base=self.cfg.attention.rope_base,
+            device=x.device,
+            dtype=x.dtype,
+        )
+        q, k = apply_rope(q, k, cos, sin)
+
+        q = q * self.q_gain.to(dtype=q.dtype)[None, :, None, None]
+
+        y = F.scaled_dot_product_attention(
+            q,
+            k,
+            v,
+            attn_mask=None,
+            is_causal=True,
+            enable_gqa=False,
+        )
+        z = _apply_xsa_projection(y, v)
+
+        z = z.transpose(1, 2).contiguous().reshape(bsz, seqlen, dim)
+        return self.proj(z)
+
+
+
 ATTENTION_REGISTRY: dict[str, type[nn.Module]] = {
     "baseline": CausalSelfAttention,
     "gqa": CausalSelfAttention,

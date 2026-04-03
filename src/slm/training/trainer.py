@@ -256,7 +256,8 @@ class Trainer:
 
         self.callbacks.on_eval_end(self, eval_outputs)
         self.model.train()
-
+        return eval_outputs
+    
     def save_checkpoint(self, path: str | Path) -> None:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)

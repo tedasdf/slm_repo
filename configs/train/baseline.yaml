@@ -71,8 +71,8 @@ trainer:
   num_sanity_val_steps: 0
 
 data:
-  train_bin_path: "artifacts/tokenizer/latest/splits/train.bin"
-  val_bin_path: "artifacts/tokenizer/latest/splits/val.bin"
+  train_bin_path: "artifacts/tokenizer/20260403_125958/splits/train/train_000000.bin"
+  val_bin_path: "artifacts/tokenizer/20260403_125958/splits/val/val_000000.bin"
 
   seq_len: 1024
   batch_size: 8
