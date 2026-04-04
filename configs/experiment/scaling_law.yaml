@@ -8,15 +8,15 @@ ratio_step: 5.0
 
 layers_list: [6, 8, 10, 12, 14, 16]
 
-dim_head_layout:
-  256: {num_heads: 4, num_kv_heads: 4}
-  320: {num_heads: 5, num_kv_heads: 5}
-  384: {num_heads: 6, num_kv_heads: 6}
-  448: {num_heads: 7, num_kv_heads: 7}
-  512: {num_heads: 8, num_kv_heads: 8}
-  640: {num_heads: 10, num_kv_heads: 10}
-  768: {num_heads: 12, num_kv_heads: 12}
-  
+dim_num_heads:
+  256: 4
+  320: 5
+  384: 6
+  448: 7
+  512: 8
+  640: 10
+  768: 12
+
 seed_values: [42, 43, 44]
 
 train_flops_coeff: 6.0
