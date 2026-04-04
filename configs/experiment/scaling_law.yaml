@@ -17,7 +17,7 @@ dim_num_heads:
   640: 10
   768: 12
 
-seed_values: [42, 43, 44]
+seed_values: [42]
 
 train_flops_coeff: 6.0
 prefer_under_target: true
