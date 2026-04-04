@@ -13,4 +13,4 @@ seed_values: [42]
 train_flops_coeff: 6.0
 prefer_under_target: true
 
-tags: "fixed compute"
+tags: ["fixed compute"]
