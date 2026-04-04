@@ -12,3 +12,5 @@ dims_list: [256, 320, 384, 448, 512, 640, 768]
 seed_values: [42]
 train_flops_coeff: 6.0
 prefer_under_target: true
+
+tags: "fixed compute"

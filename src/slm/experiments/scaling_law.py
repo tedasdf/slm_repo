@@ -2,7 +2,7 @@ from __future__ import annotations
 import wandb
 import math
 from copy import deepcopy
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from .callback import ExternalWandBCallback
@@ -27,6 +27,8 @@ class ScalingLawExperimentConfig:
     seed_values: tuple[int, ...] = (42,)
     train_flops_coeff: float = 6.0
     prefer_under_target: bool = True
+
+    tags :list[str] = field(default_factory=list)
 
 
 class ScalingLawExperiment(BaseExperiment):
@@ -322,7 +324,7 @@ class ScalingLawExperiment(BaseExperiment):
     def train_one_run(self) -> None:
         with wandb.init(
             project=self.base_cfg.logging.wandb_project,
-            tags=self.base_cfg.logging.wandb_tags + self.base_cfg.experiment.tags,
+            tags=self.base_cfg.logging.wandb_tags + self.experiment_cfg.tags,
         ) as run:
             cfg, resolved = self.apply_overrides(self.base_cfg, run.config)
 
