@@ -201,7 +201,7 @@ class ScalingLawExperiment(BaseExperiment):
         if hasattr(trainer, "micro_batch_tokens_per_rank"):
             micro = int(trainer.micro_batch_tokens_per_rank)
             grad_accum = int(getattr(trainer, "grad_accum_steps", 1))
-            world_size = int(getattr(cfg.run, "world_size", 1)) if hasattr(cfg, "run") else 1
+            world_size = int(getattr(cfg.trainer, "world_size", 1)) if hasattr(cfg, "run") else 1
             value = micro * grad_accum * world_size
             if value > 0:
                 return value
@@ -296,8 +296,7 @@ class ScalingLawExperiment(BaseExperiment):
             seed = int(sweep_cfg.seed)
             if hasattr(cfg.data, "seed"):
                 cfg.data.seed = seed
-            if hasattr(cfg.run, "seed"):
-                cfg.run.seed = seed
+            
 
         limits = self._resolve_run_limits(
             cfg=cfg,
