@@ -1,12 +1,14 @@
 from __future__ import annotations
-import wandb
+
 import math
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from .callback import ExternalWandBCallback
+import wandb
+
 from .base import BaseExperiment
+from .callback import ExternalWandBCallback
 from src.slm.training import RunConfig
 from src.slm.training.builders import build_model, build_trainer
 
@@ -28,7 +30,9 @@ class ScalingLawExperimentConfig:
     train_flops_coeff: float = 6.0
     prefer_under_target: bool = True
 
-    tags :list[str] = field(default_factory=list)
+    experiment_name: str = "scaling_law_fixed_compute"
+    experiment_type: str = "scaling_law_fixed_compute"
+    tags: list[str] = field(default_factory=list)
 
 
 class ScalingLawExperiment(BaseExperiment):
@@ -36,6 +40,7 @@ class ScalingLawExperiment(BaseExperiment):
         super().__init__(base_cfg)
 
         self.experiment_cfg = experiment_cfg
+        self._param_count_cache: dict[tuple[int, int, int, int], int] = {}
 
         self.compute_budgets = [
             round(experiment_cfg.compute_start + i * experiment_cfg.compute_step, 12)
@@ -54,7 +59,6 @@ class ScalingLawExperiment(BaseExperiment):
         self.legal_model_dims = list(experiment_cfg.dims_list)
 
         self.candidate_models = self._build_candidate_models()
-        self._param_count_cache: dict[tuple[int, int, int, int], int] = {}
 
     def _infer_head_dim(self) -> int:
         attn = self.base_cfg.model.attention
@@ -109,7 +113,7 @@ class ScalingLawExperiment(BaseExperiment):
             },
             "parameters": {
                 "experiment_name": {
-                    "values": ["scaling_law_fixed_compute"]
+                    "values": [self.experiment_cfg.experiment_name]
                 },
                 "compute_budget": {
                     "values": self.compute_budgets
@@ -252,16 +256,36 @@ class ScalingLawExperiment(BaseExperiment):
             "max_steps": int(max_steps),
         }
 
+    def _build_run_tags(
+        self,
+        *,
+        compute_budget: float,
+        data_param_ratio: float,
+        cfg: RunConfig,
+    ) -> list[str]:
+        base_tags = list(getattr(self.base_cfg.logging, "wandb_tags", []))
+        experiment_tags = list(self.experiment_cfg.tags)
+
+        resolved_tags = [
+            f"budget:{compute_budget:.3e}",
+            f"ratio:{data_param_ratio:.6g}",
+            f"layers:{cfg.model.num_layers}",
+            f"dim:{cfg.model.model_dim}",
+            f"heads:{cfg.model.attention.num_heads}",
+        ]
+
+        return base_tags + experiment_tags + resolved_tags
+
     def apply_overrides(
         self,
         cfg: RunConfig,
         sweep_cfg: Any,
-    ) -> tuple[RunConfig, dict[str, Any]]:
+    ) -> tuple[RunConfig, dict[str, Any], dict[str, Any]]:
         cfg = deepcopy(cfg)
 
-        if hasattr(sweep_cfg, "experiment_name"):
-            cfg.experiment.experiment_name = str(sweep_cfg.experiment_name)
-        cfg.experiment.experiment_type = "scaling_law_fixed_compute"
+        experiment_name = str(
+            getattr(sweep_cfg, "experiment_name", self.experiment_cfg.experiment_name)
+        )
 
         compute_budget = float(sweep_cfg.compute_budget)
         data_param_ratio = float(sweep_cfg.data_param_ratio)
@@ -281,7 +305,11 @@ class ScalingLawExperiment(BaseExperiment):
         cfg.model.attention.head_dim = int(chosen["head_dim"])
 
         if hasattr(sweep_cfg, "seed"):
-            cfg.data.seed = int(sweep_cfg.seed)
+            seed = int(sweep_cfg.seed)
+            if hasattr(cfg.data, "seed"):
+                cfg.data.seed = seed
+            if hasattr(cfg.run, "seed"):
+                cfg.run.seed = seed
 
         limits = self._resolve_run_limits(
             cfg=cfg,
@@ -294,14 +322,14 @@ class ScalingLawExperiment(BaseExperiment):
         if hasattr(cfg.trainer, "target_train_tokens"):
             cfg.trainer.target_train_tokens = int(limits["actual_target_train_tokens"])
 
-        # Important: sweep run owns W&B, not trainer logging config.
-        cfg.logging.use_wandb = False
+        if hasattr(cfg.logging, "use_wandb"):
+            cfg.logging.use_wandb = False
 
-        cfg.experiment.tags.append(f"budget:{compute_budget:.3e}")
-        cfg.experiment.tags.append(f"ratio:{data_param_ratio:.6g}")
-        cfg.experiment.tags.append(f"layers:{cfg.model.num_layers}")
-        cfg.experiment.tags.append(f"dim:{cfg.model.model_dim}")
-        cfg.experiment.tags.append(f"heads:{cfg.model.attention.num_heads}")
+        run_tags = self._build_run_tags(
+            compute_budget=compute_budget,
+            data_param_ratio=data_param_ratio,
+            cfg=cfg,
+        )
 
         resolved = {
             "compute_budget": float(compute_budget),
@@ -319,18 +347,36 @@ class ScalingLawExperiment(BaseExperiment):
             "max_steps": int(limits["max_steps"]),
         }
 
-        return cfg, resolved
+        run_metadata = {
+            "experiment_name": experiment_name,
+            "experiment_type": self.experiment_cfg.experiment_type,
+            "tags": run_tags,
+        }
+
+        return cfg, resolved, run_metadata
 
     def train_one_run(self) -> None:
+        base_tags = list(getattr(self.base_cfg.logging, "wandb_tags", []))
+
         with wandb.init(
             project=self.base_cfg.logging.wandb_project,
-            tags=self.base_cfg.logging.wandb_tags + self.experiment_cfg.tags,
+            tags=base_tags + self.experiment_cfg.tags,
         ) as run:
-            cfg, resolved = self.apply_overrides(self.base_cfg, run.config)
+            cfg, resolved, run_metadata = self.apply_overrides(self.base_cfg, run.config)
+
+            try:
+                run.tags = tuple(run_metadata["tags"])
+            except Exception:
+                pass
 
             run.config.update(
                 {
-                    "experiment": asdict(cfg.experiment),
+                    "experiment": {
+                        "name": run_metadata["experiment_name"],
+                        "type": run_metadata["experiment_type"],
+                        "tags": run_metadata["tags"],
+                        "definition": asdict(self.experiment_cfg),
+                    },
                     "model": asdict(cfg.model),
                     "optimizer": asdict(cfg.optimizer),
                     "scheduler": asdict(cfg.scheduler),
