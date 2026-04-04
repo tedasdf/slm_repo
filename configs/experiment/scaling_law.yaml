@@ -7,10 +7,19 @@ ratio_end: 25.0
 ratio_step: 5.0
 
 layers_list: [6, 8, 10, 12, 14, 16]
-dims_list: [256, 320, 384, 448, 512, 640, 768]
 
-seed_values: [42]
+dim_num_heads:
+  256: 4
+  320: 5
+  384: 6
+  448: 7
+  512: 8
+  640: 10
+  768: 12
+
+seed_values: [42, 43, 44]
+
 train_flops_coeff: 6.0
 prefer_under_target: true
 
-tags: ["fixed compute"]
+tags: ["fixed_compute"]

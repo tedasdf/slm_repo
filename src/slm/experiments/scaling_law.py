@@ -12,7 +12,6 @@ from .callback import ExternalWandBCallback
 from src.slm.training import RunConfig
 from src.slm.training.builders import build_model, build_trainer
 
-
 @dataclass
 class ScalingLawExperimentConfig:
     compute_start: float
@@ -24,7 +23,7 @@ class ScalingLawExperimentConfig:
     ratio_step: float
 
     layers_list: tuple[int, ...]
-    dims_list: tuple[int, ...]
+    dim_num_heads: dict[int, int]
 
     seed_values: tuple[int, ...] = (42,)
     train_flops_coeff: float = 6.0
@@ -33,7 +32,7 @@ class ScalingLawExperimentConfig:
     experiment_name: str = "scaling_law_fixed_compute"
     experiment_type: str = "scaling_law_fixed_compute"
     tags: list[str] = field(default_factory=list)
-
+    
 
 class ScalingLawExperiment(BaseExperiment):
     def __init__(self, base_cfg: RunConfig, experiment_cfg: ScalingLawExperimentConfig) -> None:
@@ -56,46 +55,30 @@ class ScalingLawExperiment(BaseExperiment):
         ]
 
         self.legal_num_layers = list(experiment_cfg.layers_list)
-        self.legal_model_dims = list(experiment_cfg.dims_list)
-
         self.candidate_models = self._build_candidate_models()
-
-    def _infer_head_dim(self) -> int:
-        attn = self.base_cfg.model.attention
-
-        if getattr(attn, "head_dim", None) is not None:
-            return int(attn.head_dim)
-
-        num_heads = getattr(attn, "num_heads", None)
-        model_dim = getattr(self.base_cfg.model, "model_dim", None)
-
-        if num_heads is not None and model_dim is not None:
-            num_heads = int(num_heads)
-            model_dim = int(model_dim)
-            if num_heads > 0 and model_dim % num_heads == 0:
-                return model_dim // num_heads
-
-        return 64
 
     def _build_candidate_models(self) -> list[dict[str, int]]:
         candidates: list[dict[str, int]] = []
-        head_dim = self._infer_head_dim()
 
         for num_layers in self.legal_num_layers:
-            for model_dim in self.legal_model_dims:
-                if model_dim % head_dim != 0:
-                    continue
+            for model_dim, num_heads in self.experiment_cfg.dim_num_heads.items():
+                model_dim = int(model_dim)
+                num_heads = int(num_heads)
 
-                num_heads = model_dim // head_dim
                 if num_heads <= 0:
                     continue
+
+                if model_dim % num_heads != 0:
+                    continue
+
+                head_dim = model_dim // num_heads
 
                 candidates.append(
                     {
                         "num_layers": int(num_layers),
-                        "model_dim": int(model_dim),
-                        "num_heads": int(num_heads),
-                        "head_dim": int(head_dim),
+                        "model_dim": model_dim,
+                        "num_heads": num_heads,
+                        "head_dim": head_dim,
                     }
                 )
 
