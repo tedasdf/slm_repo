@@ -14,7 +14,7 @@ DeviceType = Literal["cpu", "cuda"]
 class TrainerConfig:
     device: str = "cuda"
     precision: str = "bf16"
-
+    world_size: int = 1
     max_steps: int = 10_000
     max_epochs: Optional[int] = None
 

@@ -14,7 +14,7 @@ model:
   attention:
     attention_type: "baseline"
     num_heads: 8
-    num_kv_heads: null
+    num_kv_heads: 
     head_dim: null
     rope_base: 10000.0
     qk_gain_init: 1.0
@@ -49,6 +49,7 @@ trainer:
   device: "cuda"
   precision: "bf16"
 
+  world_size: 1
   max_steps: 10000
   max_epochs: null
 
@@ -75,7 +76,7 @@ data:
   val_bin_path: "artifacts/tokenizer/20260403_125958/splits/val/val_000000.bin"
 
   seq_len: 1024
-  batch_size: 8
+  batch_size: 256
 
   stride: null
   shuffle_train: true

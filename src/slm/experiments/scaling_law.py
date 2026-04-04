@@ -152,6 +152,9 @@ class ScalingLawExperiment(BaseExperiment):
         cfg.model.attention.num_heads = int(num_heads)
         cfg.model.attention.head_dim = int(head_dim)
 
+        if hasattr(cfg.model.attention, "num_kv_heads"):
+            cfg.model.attention.num_kv_heads = int(num_heads)
+
         model = build_model(cfg.model)
         n_params = sum(p.numel() for p in model.parameters())
 
