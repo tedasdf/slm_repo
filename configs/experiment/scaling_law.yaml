@@ -1,12 +1,12 @@
-compute_start: 1.25e16
-compute_end: 5.0e16
-compute_step: 1.25e16
+compute_start: 2.5e15
+compute_end: 1.0e16
+compute_step: 2.5e15
 
-ratio_start: 10.0
+ratio_start: 15.0
 ratio_end: 25.0
 ratio_step: 5.0
 
-layers_list: [6, 8, 10, 12, 14, 16]
+layers_list: [4, 6, 8, 10]
 
 dim_num_heads:
   256: 4
@@ -14,8 +14,6 @@ dim_num_heads:
   384: 6
   448: 7
   512: 8
-  640: 10
-  768: 12
 
 seed_values: [42]
 
