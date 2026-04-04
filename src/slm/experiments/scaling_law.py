@@ -287,6 +287,8 @@ class ScalingLawExperiment(BaseExperiment):
         cfg.model.attention.num_heads = int(chosen["num_heads"])
         cfg.model.attention.head_dim = int(chosen["head_dim"])
 
+        if hasattr(cfg.model.attention, "num_kv_heads"):
+            cfg.model.attention.num_kv_heads = int(chosen["num_heads"])
         if hasattr(sweep_cfg, "seed"):
             seed = int(sweep_cfg.seed)
             if hasattr(cfg.data, "seed"):
