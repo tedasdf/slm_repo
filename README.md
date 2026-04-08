@@ -2,4 +2,8 @@ training log with wandb artifact will log simplistic config snapshot and wandb r
 
 data_process
 
-I have tokenizer and other data proceess pieplein 
+I have tokenizer and other data proceess pieplein ]
+
+
+for future referecne 
+Stoachstic Lanczos Quadrature methods 
