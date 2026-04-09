@@ -82,13 +82,11 @@ class OptimizerConfig:
     beta2: float = 0.95
     eps: float = 1e-8
 
-
 @dataclass
 class SchedulerConfig:
     scheduler_type: str = "constant"   # "constant" | "cosine"
     t_max: Optional[int] = None
     eta_min: float = 0.0
-
 
 @dataclass
 class LoggingConfig:
@@ -98,9 +96,6 @@ class LoggingConfig:
     wandb_run_name: Optional[str] = None
     wandb_tags: list[str] = field(default_factory=list)
     wandb_config: Optional[dict] = None
-
-
-
 
 @dataclass
 class RunConfig:
