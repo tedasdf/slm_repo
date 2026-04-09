@@ -1,10 +1,11 @@
-compute_list: [2.50e16, 5.0e16, 1.0e16 ] 
+compute_list: [1.0e18, 2.0e18, 4.0e18, 8.0e18, 1.6e19]
 
 ratio_start: 10.0
 ratio_end: 30.0
 ratio_step: 5.0
 
-layers_list: [4, 5, 6, 7, 8, 9, 10]
+
+layers_list: [6, 8, 10, 12, 14, 16, 18]
 
 dim_num_heads:
   256: 4
@@ -12,17 +13,20 @@ dim_num_heads:
   384: 6
   448: 7
   512: 8
-  576: 9
   640: 10
-  704: 11
   768: 12
-  894: 14
+  896: 14
   1024: 16
+  1152: 18
+  1280: 20
 
 seed_values: [42]
 
 selection_param_mode: "kaplan"
 train_flops_coeff: 6.0
 prefer_under_target: true
+
+max_param_rel_error: 0.1
+min_steps: 1
 
 tags: ["fixed_compute"]

@@ -5,7 +5,7 @@ from pathlib import Path
 
 from omegaconf import OmegaConf
 
-from .experiments.scaling_law import (
+from src.slm.experiments.scaling_law import (
     ScalingLawExperiment,
     ScalingLawExperimentConfig,
 )

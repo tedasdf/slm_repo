@@ -36,8 +36,13 @@ class ScalingLawExperimentConfig:
 
     experiment_name: str = "scaling_law_fixed_compute"
     experiment_type: str = "scaling_law_fixed_compute"
+
+    max_param_rel_error: float = 0.15
+    min_steps: int = 1
     tags: list[str] = field(default_factory=list)
 
+
+## Potential TODO add smoke test before 
 
 class ScalingLawExperiment():
     def __init__(self, base_cfg: RunConfig, experiment_cfg):
@@ -54,7 +59,6 @@ class ScalingLawExperiment():
 
         self.legal_num_layers = list(experiment_cfg.layers_list)
         self.candidate_models = self._build_candidate_models()
-
 
     ### finding the best model globally
     def _build_candidate_models(self) -> list[dict[str, int]]:
@@ -422,75 +426,6 @@ class ScalingLawExperiment():
             "tokens_per_step": tokens_per_step,
             "max_steps": max_steps,
         }
-    
-    def apply_overrides(self, cfg: RunConfig, sweep_cfg: Any):
-        cfg = deepcopy(cfg)
-
-        compute_budget = float(sweep_cfg.compute_budget)
-        data_param_ratio = float(sweep_cfg.data_param_ratio)
-        param_mode = str(getattr(sweep_cfg, "selection_param_mode", "kaplan"))
-
-        theoretical = self._resolve_targets_from_compute(
-            compute_budget=compute_budget,
-            data_param_ratio=data_param_ratio,
-            param_mode=param_mode,
-        )
-
-        chosen = self._choose_best_architectures(
-            target_params=theoretical["target_params"],
-            param_mode=param_mode,
-            return_per_depth=False,
-        )
-
-        cfg.model.num_layers = int(chosen["num_layers"])
-        cfg.model.model_dim = int(chosen["model_dim"])
-        cfg.model.attention.num_heads = int(chosen["num_heads"])
-        cfg.model.attention.head_dim = int(chosen["head_dim"])
-
-        if hasattr(cfg.model.attention, "num_kv_heads"):
-            cfg.model.attention.num_kv_heads = int(chosen["num_heads"])
-
-        limits = self._resolve_run_limits(
-            cfg=cfg,
-            compute_budget=compute_budget,
-            actual_params=int(chosen["actual_params"]),
-        )
-
-        cfg.trainer.max_steps = int(limits["max_steps"])
-
-        resolved = {
-            "compute_budget": compute_budget,
-            "data_param_ratio": data_param_ratio,
-            "selection_param_mode": param_mode,
-            "theoretical_target_params": theoretical["target_params"],
-            "theoretical_target_train_tokens": theoretical["target_train_tokens"],
-            "resolved_num_layers": chosen["num_layers"],
-            "resolved_model_dim": chosen["model_dim"],
-            "resolved_num_heads": chosen["num_heads"],
-            "resolved_head_dim": chosen["head_dim"],
-            "actual_params": chosen["actual_params"],
-            "param_rel_error": chosen["param_rel_error"],
-            "model_dim_rel_error": chosen["model_dim_rel_error"],
-            "actual_target_train_tokens": limits["actual_target_train_tokens"],
-            "tokens_per_step": limits["tokens_per_step"],
-            "max_steps": limits["max_steps"],
-        }
-
-        return cfg, resolved
-
-    def train_one_run(self) -> None:
-        with wandb.init(project=self.base_cfg.logging.wandb_project) as run:
-            cfg, resolved = self.apply_overrides(self.base_cfg, run.config)
-
-            run.config.update(
-                {
-                    "resolved": resolved,
-                },
-                allow_val_change=True,
-            )
-
-            trainer = build_trainer(cfg)
-            trainer.train()
 
     def make_sweep_config(self) -> dict[str, Any]:
         return {
@@ -580,11 +515,35 @@ class ScalingLawExperiment():
     ## config training into ###
 
     def train_one_run(self) -> None:
+        max_param_rel_error = float(
+            getattr(self.experiment_cfg, "max_param_rel_error", 0.15)
+        )
+        min_steps = int(
+            getattr(self.experiment_cfg, "min_steps", 1)
+        )
+
         with wandb.init(
             project=self.base_cfg.logging.wandb_project,
             tags=list(self.experiment_cfg.tags),
         ) as run:
             cfg, resolved = self.apply_overrides(self.base_cfg, run.config)
+
+            param_rel_error = float(resolved["param_rel_error"])
+            max_steps = int(resolved["max_steps"])
+
+            skip_reasons: list[str] = []
+
+            if param_rel_error > max_param_rel_error:
+                skip_reasons.append(
+                    f"param_rel_error={param_rel_error:.4f} > {max_param_rel_error:.4f}"
+                )
+
+            if max_steps < min_steps:
+                skip_reasons.append(
+                    f"max_steps={max_steps} < min_steps={min_steps}"
+                )
+
+            should_skip = len(skip_reasons) > 0
 
             run.config.update(
                 {
@@ -594,15 +553,43 @@ class ScalingLawExperiment():
                         "definition": asdict(self.experiment_cfg),
                     },
                     "resolved": resolved,
+                    "selection": {
+                        "should_skip": should_skip,
+                        "skip_reasons": skip_reasons,
+                        "max_param_rel_error": max_param_rel_error,
+                        "min_steps": min_steps,
+                    },
                 },
                 allow_val_change=True,
             )
+
+            run.summary["should_skip"] = should_skip
+            run.summary["param_rel_error"] = param_rel_error
+            run.summary["max_steps"] = max_steps
+            run.summary["actual_params"] = int(resolved["actual_params"])
+            run.summary["actual_target_train_tokens"] = int(
+                resolved["actual_target_train_tokens"]
+            )
+
+            if should_skip:
+                skip_reason_text = " | ".join(skip_reasons)
+                run.summary["skip_reason"] = skip_reason_text
+                print(
+                    "[SKIP] "
+                    f"compute={resolved['compute_budget']:.3e}, "
+                    f"ratio={resolved['data_param_ratio']:.2f}, "
+                    f"arch=({resolved['resolved_num_layers']}, "
+                    f"{resolved['resolved_model_dim']}, "
+                    f"{resolved['resolved_num_heads']}), "
+                    f"reason={skip_reason_text}"
+                )
+                return
 
             trainer = build_trainer(cfg)
             trainer.train()
 
     def run(self, count: int | None = None) -> str:
-    sweep_config = self.make_sweep_config()
+        sweep_config = self.make_sweep_config()
 
         sweep_id = wandb.sweep(
             sweep=sweep_config,
@@ -616,7 +603,7 @@ class ScalingLawExperiment():
         )
 
         return sweep_id
-
+    
 if __name__ == "__main__":
     from omegaconf import OmegaConf
 
