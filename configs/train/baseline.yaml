@@ -14,7 +14,7 @@ model:
   attention:
     attention_type: "baseline"
     num_heads: 8
-    num_kv_heads: 
+    num_kv_heads: 8
     head_dim: null
     rope_base: 10000.0
     qk_gain_init: 1.0
