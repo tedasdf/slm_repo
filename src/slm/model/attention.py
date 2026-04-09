@@ -166,6 +166,11 @@ class SlidingWindowAttention(CausalSelfAttention):
         )
         return self.out_proj(y)
 
+class ResidualAttention():
+    def __init__():
+        raise ValueError
+
+
 ATTENTION_REGISTRY: dict[str, type[nn.Module]] = {
     "baseline": CausalSelfAttention,
     "gqa": CausalSelfAttention,
