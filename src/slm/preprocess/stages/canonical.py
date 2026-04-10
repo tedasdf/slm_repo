@@ -1,9 +1,13 @@
+from __future__ import annotations
+
 import ast
 import builtins
-from dataclasses import dataclass
-from typing import Any, Literal
 import io
 import tokenize
+from dataclasses import dataclass
+from functools import partial
+from typing import Any, Literal
+
 import ray
 
 _BUILTINS = set(dir(builtins))
@@ -18,26 +22,20 @@ class CanonResult:
 
 @dataclass
 class CanonicalizerConfig:
-    # Output choice
-    representation: Literal["node_types", "dump"] = "node_types"
-    traversal: Literal["preorder", "postorder", "bfs"] = (
-        "preorder"  # only for node_types
-    )
+    representation: str = "node_types"
+    traversal: str = "preorder"
 
-    # Canonicalization knobs
     remove_docstrings: bool = True
     rename_locals: bool = True
     rename_args: bool = True
     rename_function_names: bool = False
     rename_class_names: bool = False
 
-    normalize_literals: Literal["none", "basic", "aggressive"] = "basic"
+    normalize_literals: str = "basic"
     keep_builtins: bool = True
 
     max_code_chars: int = 200_000
-    on_parse_error: Literal["skip", "fallback"] = (
-        "skip"  # fallback = use normalized text etc.
-    )
+    on_parse_error: str = "skip"
 
 
 class Canonicalizer(ast.NodeTransformer):
@@ -124,7 +122,6 @@ class Canonicalizer(ast.NodeTransformer):
         return node
 
 
-################# TRAVERSAL METHOD #####################
 def _preorder_node_types(root: ast.AST) -> list[str]:
     out: list[str] = []
     stack = [root]
@@ -155,25 +152,14 @@ def _bfs_node_types(root: ast.AST) -> list[str]:
     return [type(n).__name__ for n in ast.walk(root)]
 
 
-################# TRAVERSAL METHOD #####################
-
-
 def fallback_representation(
     code: str, cfg: CanonicalizerConfig, max_tokens: int = 5000
 ):
-    """
-    Fallback when ast.parse fails.
-    - Uses Python tokenizer (not AST) to produce a stable-ish token stream.
-    - Returns:
-        - string if cfg.representation=="dump"
-        - list[str] if cfg.representation=="node_types"
-    """
     try:
         toks = []
         for tok in tokenize.generate_tokens(io.StringIO(code).readline):
             ttype, tval = tok.type, tok.string
 
-            # Drop pure formatting
             if ttype in (
                 tokenize.NL,
                 tokenize.NEWLINE,
@@ -185,25 +171,23 @@ def fallback_representation(
             if ttype == tokenize.COMMENT:
                 continue
 
-            # Normalize token values a bit
             if ttype == tokenize.NAME:
-                toks.append("NAME")  # normalize identifiers
+                toks.append("NAME")
             elif ttype == tokenize.NUMBER:
                 toks.append("NUM")
             elif ttype == tokenize.STRING:
                 toks.append("STR")
             else:
-                toks.append(tval)  # operators / punctuation etc.
+                toks.append(tval)
 
             if len(toks) >= max_tokens:
                 break
 
         if cfg.representation == "dump":
-            return " ".join(toks)  # string fallback
-        return toks  # token-list fallback
+            return " ".join(toks)
+        return toks
 
     except Exception:
-        # last resort: whitespace normalize
         norm = " ".join(code.replace("\r\n", "\n").replace("\r", "\n").split())
         if cfg.representation == "dump":
             return norm
@@ -229,7 +213,6 @@ def canonicalize(code: str, cfg: CanonicalizerConfig) -> CanonResult:
             )
             return CanonResult(ok=True, rep=canon_str)
 
-        # node_types
         if cfg.traversal == "preorder":
             seq = _preorder_node_types(canon_tree)
         elif cfg.traversal == "postorder":
@@ -256,8 +239,7 @@ def canonicalize(code: str, cfg: CanonicalizerConfig) -> CanonResult:
         )
 
 
-######## transform #########3
-def transform_canonicalize_row(row, canon_cfg):
+def transform_canonicalize_row(row: dict[str, Any], canon_cfg):
     if row.get("language") != "python" or not row.get("has_code"):
         row["parse_ok"] = False
         row["parse_err"] = "not_python_or_no_code"
@@ -280,44 +262,6 @@ def transform_canonicalize_row(row, canon_cfg):
     return row
 
 
-if __name__ == "__main__":
-    import ray
-
-    ray.init()
-    ds = ray.data.read_parquet(
-        "../../dataset/processed_datasets/unified_python/29_000000_000000.parquet"
-    )
-
-    cfg = CanonicalizerConfig(
-        representation="node_types", traversal="preorder", on_parse_error="skip"
-    )
-
-    def add_node_types(row):
-        if row.get("language") != "python" or not row.get("has_code"):
-            row["parse_ok"] = False
-            row["node_types"] = []
-            row["parse_err"] = "not_python_or_no_code"
-            return row
-
-        res = canonicalize(row["code_ref"], cfg)
-        row["parse_ok"] = res.ok
-        row["node_types"] = res.rep if res.ok else []
-        row["parse_err"] = res.err
-        return row
-
-    ds2 = ds.map(add_node_types)
-    rows = ds2.take(3)
-    for r in rows:
-        print(
-            r["id"],
-            r["parse_ok"],
-            "len(node_types)=",
-            len(r["node_types"]),
-            r["parse_err"] or "",
-        )
-        print(r["node_types"][:25], "...\n")
-
-    out_dir = "intermediate/canon_node_types_v0001_single"
-
-    ds2_single = ds2.repartition(1)  # one output shard
-    ds2_single.write_parquet(out_dir)
+def apply_canonicalize(ds: ray.data.Dataset, canon_cfg):
+    row_fn = partial(transform_canonicalize_row, canon_cfg=canon_cfg)
+    return ds.map(row_fn)

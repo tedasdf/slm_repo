@@ -1,0 +1,51 @@
+run:
+  input_dir: "artifacts/data/sample_1000"
+  canonicalize_output_dir: "artifacts/preprocess/01_canonicalize/sample_1000"
+  minhash_output_dir: "artifacts/preprocess/02_minhash/sample_1000"
+
+  debug: false
+  debug_max_rows: 2000
+
+  canonicalize_parseable_only: false
+  minhash_sig_only: false
+
+  sample_size: 1000
+
+  input_columns:
+    - id
+    - language
+    - has_code
+    - code_ref
+
+  object_store_memory_bytes: 2684354560
+
+  ray_init_kwargs:
+    ignore_reinit_error: true
+
+  save_local_metrics_json: true
+
+canonicalize:
+  representation: "node_types"
+  traversal: "preorder"
+  remove_docstrings: true
+  rename_locals: true
+  rename_args: true
+  rename_function_names: false
+  rename_class_names: false
+  normalize_literals: "basic"
+  keep_builtins: true
+  max_code_chars: 200000
+  on_parse_error: "skip"
+
+minhash:
+  shingle_n: 5
+  num_perm: 128
+  seed0: 1337
+wandb:
+  enabled: True
+  project: "slm-preprocess"
+  entity: null
+  name: null
+  mode: "online"   # online / offline / disabled
+  tags: ["canonicalize"]
+  log_code: false
