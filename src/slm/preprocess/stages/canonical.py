@@ -256,44 +256,28 @@ def canonicalize(code: str, cfg: CanonicalizerConfig) -> CanonResult:
         )
 
 
-def run_stage_canonicalize(cfg, stage_paths: dict[str, str]):
-    ds = ray.data.read_parquet(cfg.run.input_dir)
+######## transform #########3
+def transform_canonicalize_row(row, canon_cfg):
+    if row.get("language") != "python" or not row.get("has_code"):
+        row["parse_ok"] = False
+        row["parse_err"] = "not_python_or_no_code"
 
-    if getattr(cfg.run, "debug", False):
-        ds = ds.limit(getattr(cfg.run, "debug_max_rows", 2000))
-
-    def add_canon(row):
-        # skip non-python/no-code
-        if row.get("language") != "python" or not row.get("has_code"):
-            row["parse_ok"] = False
-            row["parse_err"] = "not_python_or_no_code"
-            # keep representation column consistent
-            if cfg.canonicalize.representation == "dump":
-                row["canon_dump"] = ""
-            else:
-                row["node_types"] = []
-            return row
-
-        res = canonicalize(row.get("code_ref", "") or "", cfg.canonicalize)
-        row["parse_ok"] = res.ok
-        row["parse_err"] = res.err
-
-        if cfg.canonicalize.representation == "dump":
-            row["canon_dump"] = res.rep if res.ok else ""
+        if canon_cfg.representation == "dump":
+            row["canon_dump"] = ""
         else:
-            row["node_types"] = res.rep if res.ok else []
-
+            row["node_types"] = []
         return row
 
-    ds2 = ds.map(add_canon)
-    # If you want downstream stages to only see parse_ok rows:
-    ds_canon = ds2.filter(lambda r: r.get("parse_ok", False))
+    res = canonicalize(row.get("code_ref", "") or "", canon_cfg)
+    row["parse_ok"] = res.ok
+    row["parse_err"] = res.err
 
-    out_dir = stage_paths["canonicalize"]
-    ds_canon.write_parquet(out_dir)
-    print("wrote canonicalize:", out_dir, "| rows:", ds_canon.count())
+    if canon_cfg.representation == "dump":
+        row["canon_dump"] = res.rep if res.ok else ""
+    else:
+        row["node_types"] = res.rep if res.ok else []
 
-    return ds_canon
+    return row
 
 
 if __name__ == "__main__":
