@@ -10,11 +10,15 @@ class DatasetConfig:
     dataset_name: str = ""
     dataset_config_name: str = ""
     data_files_glob: str = ""
-    
+
     # actual split names in the source dataset
     train_split_name: str = "train"
     val_split_name: Optional[str] = None
     test_split_name: Optional[str] = None
+
+    # synthetic split settings for sources that do not have a real val split
+    val_fraction: float = 0.0
+    split_seed: int = 42
 
     # which text columns to read
     text_fields: list[str] = field(default_factory=lambda: ["text"])

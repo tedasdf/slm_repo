@@ -41,7 +41,8 @@ trainer:
   precision: "bf16"
   world_size: 1
 
-  train_tokenizer_before_fit: true
+  train_tokenizer_before_fit: false
+  
   target_train_tokens: null
   text_key: "text"
   max_seq_len: 1024
@@ -82,11 +83,11 @@ dataset:
   max_train_samples: null
   max_val_samples: 2000
   max_test_samples: null
-
+  val_fraction: 0.01
+  split_seed: 42
   seed: 42
   shuffle: true
   shuffle_buffer_size: 10000
-
 
 tokenizer:
   tokenizer_type: "bpe"
