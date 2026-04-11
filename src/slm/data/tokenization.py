@@ -193,10 +193,13 @@ def tokenize_text_batch(
         if not ids:
             continue
         row = torch.tensor(ids, dtype=torch.long)
-        seq_len = row.numel()
-        input_ids[i, :seq_len] = row
-        labels[i, :seq_len] = row
+        x = row[:-1]
+        y = row[1:]
 
+        seq_len = x.numel()
+        input_ids[i, :seq_len] = x
+        labels[i, :seq_len] = y
+        
     return {
         "input_ids": input_ids,
         "labels": labels,
