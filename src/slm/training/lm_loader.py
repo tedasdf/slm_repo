@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -73,7 +72,7 @@ class TokenBlockDataset(Dataset):
         }
 
 
-def build_dataloaders(data_cfg: DataLoaderConfig) -> tuple[DataLoader, DataLoader | None]:
+def build_token_dataloaders(data_cfg: DataLoaderConfig) -> tuple[DataLoader, DataLoader | None]:
     train_dataset = TokenBlockDataset(
         bin_path=data_cfg.train_bin_path,
         seq_len=data_cfg.seq_len,

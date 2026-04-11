@@ -6,8 +6,8 @@ from typing import Any
 import torch
 import torch.nn as nn
 
-from src.slm.training.lm_loader import build_dataloaders as build_token_dataloaders
-from src.slm.training.text_loader import build_dataloaders as build_text_dataloaders
+from .lm_loader import build_token_dataloaders
+from .text_loader import build_text_dataloaders
 from src.slm.data.tokenizer import BPETokenizer
 from src.slm.model import ModelConfig, TransformerLM
 from .logging import PrintMetricsCallback, WandBCallback

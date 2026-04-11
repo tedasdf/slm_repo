@@ -41,7 +41,7 @@ def collate_text_batch(batch: list[str]) -> dict[str, list[str]]:
     return {"text": batch}
 
 
-def build_dataloaders(
+def build_text_dataloaders(
     dataset_cfg: DatasetConfig,
     loader_cfg: DataLoaderConfig,
 ) -> tuple[DataLoader, DataLoader | None]:
