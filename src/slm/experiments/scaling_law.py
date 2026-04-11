@@ -404,7 +404,8 @@ class ScalingLawExperiment():
     def _tokens_per_step(self, cfg: RunConfig) -> int:
         batch_size = int(cfg.data.batch_size)
         seq_len = int(getattr(cfg.trainer, "train_seq_len", cfg.model.max_seq_len))
-        return batch_size * seq_len
+        grad_accum_steps = int(cfg.trainer.grad_accum_steps)
+        return batch_size * seq_len * grad_accum_steps
     
     def _resolve_run_limits(
         self,
@@ -489,9 +490,10 @@ class ScalingLawExperiment():
         )
 
         cfg.trainer.max_steps = int(limits["max_steps"])
+        cfg.trainer.target_train_tokens = int(limits["actual_target_train_tokens"])
 
-        if hasattr(cfg.trainer, "target_train_tokens"):
-            cfg.trainer.target_train_tokens = int(limits["actual_target_train_tokens"])
+        if hasattr(cfg.data, "train_token_budget"):
+            cfg.data.train_token_budget = int(limits["actual_target_train_tokens"])
 
         resolved = {
             "compute_budget": compute_budget,

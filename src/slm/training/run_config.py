@@ -19,6 +19,7 @@ class TrainerConfig:
     world_size: int = 1
     
     train_tokenizer_before_fit: bool = False
+    target_train_tokens: int | None = None
     text_key: str = "text"
     max_seq_len: int = 1024
 

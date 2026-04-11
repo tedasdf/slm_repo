@@ -128,7 +128,7 @@ class Trainer:
 
         return batch, None
 
-    def _compute_loss(self, batch: Any) -> tuple[torch.Tensor, dict[str, Any]]:
+    def _compute_loss(self, batch: Any) -> tuple[torch.Tensor, dict[str, Any], Any | None]:
         batch = self._tokenize_batch_if_needed(batch)
         batch = move_to_device(batch, self.device)
         model_inputs, targets = self._extract_model_inputs(batch)
@@ -156,12 +156,9 @@ class Trainer:
                     raise ValueError("targets are required when using loss_fn")
                 loss = self.loss_fn(outputs, targets)
 
-        if not torch.isfinite(loss):
-            self.state.extra["diagnostics/has_nan_or_inf_loss"] = True
-        else:
-            self.state.extra["diagnostics/has_nan_or_inf_loss"] = False
+        self.state.extra["diagnostics/has_nan_or_inf_loss"] = not torch.isfinite(loss)
 
-        return loss, outputs if isinstance(outputs, dict) else {"outputs": outputs}
+        return loss, outputs if isinstance(outputs, dict) else {"outputs": outputs}, targets
 
     def _compute_grad_norm(self) -> float | None:
         total_sq = 0.0
@@ -226,7 +223,7 @@ class Trainer:
     def train_step(self, batch: Any) -> dict[str, Any]:
         self.callbacks.on_step_start(self)
 
-        loss, outputs = self._compute_loss(batch)
+        loss, outputs, targets = self._compute_loss(batch)
         loss_for_backward = loss / self.config.grad_accum_steps
 
         if self._use_grad_scaler():
@@ -236,8 +233,19 @@ class Trainer:
 
         self.state.last_train_loss = float(loss.detach().item())
 
+        if torch.is_tensor(targets):
+            tokens_this_batch = int((targets != -100).sum().item())
+            self.state.train_tokens_seen += tokens_this_batch
+
+            batch_size = int(targets.size(0)) if targets.ndim > 0 else 0
+            self.state.train_samples_seen += batch_size
+        else:
+            tokens_this_batch = 0
+
         step_outputs: dict[str, Any] = {
             "loss": self.state.last_train_loss,
+            "tokens_this_batch": tokens_this_batch,
+            "train_tokens_seen": self.state.train_tokens_seen,
         }
 
         return step_outputs
@@ -347,7 +355,7 @@ class Trainer:
 
         try:
             self._fit_tokenizer_if_needed()
-            
+
             if self.config.num_sanity_val_steps > 0 and self.val_loader is not None:
                 self.validate()
 
@@ -368,17 +376,21 @@ class Trainer:
                         self.state.step += 1
 
                         step_time = time.time() - self.state.started_at if self.state.started_at else None
-
-
-
                         self.state.extra["timing/elapsed_since_start_sec"] = step_time
+
+                        target_train_tokens = getattr(self.config, "target_train_tokens", None)
+                        if (
+                            target_train_tokens is not None
+                            and self.state.train_tokens_seen >= int(target_train_tokens)
+                        ):
+                            self.state.should_stop = True
+                            self.state.extra["stopping/reached_target_train_tokens"] = True
 
                         if self.state.step % self.config.train_log_every == 0:
                             self.callbacks.on_step_end(self, step_outputs)
 
                         if self.val_loader is not None and self.state.step % self.config.eval_every == 0:
                             self.validate()
-    
 
                         if self.state.step % self.config.checkpoint_every == 0:
                             ckpt_path = Path("artifacts/checkpoints") / f"step_{self.state.step}.pt"

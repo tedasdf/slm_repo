@@ -123,6 +123,14 @@ class WandBCallback(Callback):
                 if _is_number(v):
                     payload[f"step/{k}"] = float(v)
 
+        if state.train_tokens_seen is not None:
+            payload["train/tokens_seen"] = state.train_tokens_seen
+
+        if state.train_samples_seen is not None:
+            payload["train/samples_seen"] = state.train_samples_seen
+
+        payload["trainer/epoch"] = state.epoch
+
         self._wandb.log(payload, step=state.step)
 
     def on_eval_end(self, trainer: Any, eval_outputs: Optional[dict[str, Any]] = None) -> None:
@@ -154,6 +162,11 @@ class WandBCallback(Callback):
             summary["best_val_loss"] = trainer.state.best_val_loss
         if trainer.state.elapsed_seconds is not None:
             summary["elapsed_seconds"] = trainer.state.elapsed_seconds
+
+        summary["train_tokens_seen"] = trainer.state.train_tokens_seen
+        summary["train_samples_seen"] = trainer.state.train_samples_seen
+        summary["last_train_loss"] = trainer.state.last_train_loss
+        summary["last_val_loss"] = trainer.state.last_val_loss
 
         for k, v in summary.items():
             self._run.summary[k] = v
