@@ -62,7 +62,7 @@ class Trainer:
         if self.config.compile_model and hasattr(torch, "compile"):
             self.model = torch.compile(self.model)
 
-        self.grad_scaler = torch.cuda.amp.GradScaler(enabled=self._use_grad_scaler())
+        self.grad_scaler = torch.amp.GradScaler("cuda", enabled=self._use_grad_scaler())
         
     @classmethod
     def from_components(cls, components: dict[str, Any]) -> "Trainer":
