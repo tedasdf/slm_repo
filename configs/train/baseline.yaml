@@ -1,6 +1,5 @@
-
 model:
-  vocab_size: 32000
+  vocab_size: 16000
   max_seq_len: 1024
 
   num_layers: 8
@@ -41,15 +40,21 @@ logging:
   use_print_callback: true
   use_wandb: false
   wandb_project: "slm-runs"
-  wandb_run_name: "baseline"
+  wandb_run_name: "baseline_runtime"
   wandb_tags:
     - "baseline"
+    - "runtime-tokenization"
 
 trainer:
   device: "cuda"
   precision: "bf16"
 
   world_size: 1
+
+  train_tokenizer_before_fit: true
+  text_key: "text"
+  max_seq_len: 512
+
   max_steps: 10000
   max_epochs: null
 
@@ -71,16 +76,43 @@ trainer:
 
   num_sanity_val_steps: 0
 
-data:
-  train_bin_path: "artifacts/tokenizer/20260403_125958/splits/train/train_000000.bin"
-  val_bin_path: "artifacts/tokenizer/20260403_125958/splits/val/val_000000.bin"
+dataset:
+  source_type: "dolma_local"
+  data_files_glob: "./artifacts/data/dolma_v1_6_sample/**/*.json.gz"
+  dataset_name: "allenai/dolma3_mix-6T"
+  dataset_config_name: "default"
+  train_split_name: "train"
+  val_split_name: null
+  test_split_name: null
+  text_fields: ["text"]
+  cache_dir: "artifacts/data/hf_cache"
+  streaming: true
+  max_train_samples: null
+  max_val_samples: null
+  max_test_samples: null
+  seed: 42
+  shuffle: true
+  shuffle_buffer_size: 10000
 
+tokenizer:
+  tokenizer_type: "bpe"
+  vocab_size: 16000
+  min_frequency: 2
+  pad_token: "<pad>"
+  eos_token: "<eos>"
+  unk_token: "<unk>"
+  bos_token: null
+  reuse_existing: true
+  tokenizer_train_samples: 500000
+  tokenizer_path: "artifacts/tokenizer/runtime/tokenizer.json"
+  allow_missing_tokenizer: true
+
+data:
+  use_online_tokenization: true
   seq_len: 512
   batch_size: 8
-
   stride: null
   shuffle_train: true
-
   num_workers: 0
   pin_memory: true
   drop_last: true

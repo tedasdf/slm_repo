@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal, Optional
 
-from src.slm.data.config import DatasetConfig
+from src.slm.data.config import DatasetConfig, TokenizerConfig
 from src.slm.model import ModelConfig
 
 
@@ -64,61 +64,25 @@ class TrainerConfig:
         if self.num_sanity_val_steps < 0:
             raise ValueError("num_sanity_val_steps must be >= 0")
 
-
 @dataclass
 class DataLoaderConfig:
-    # --------------------------------------------------
-    # mode switch
-    # --------------------------------------------------
     use_online_tokenization: bool = False
 
-    # --------------------------------------------------
-    # pretokenized / bin-loader mode
-    # --------------------------------------------------
+    # pretokenized mode
     train_bin_path: Optional[str] = "artifacts/tokenizer/latest/splits/train.bin"
     val_bin_path: Optional[str] = "artifacts/tokenizer/latest/splits/val.bin"
 
     seq_len: int = 1024
-    stride: Optional[int] = None   # None -> use seq_len
+    stride: Optional[int] = None
 
-    # --------------------------------------------------
-    # raw-text / online-tokenization mode
-    # --------------------------------------------------
-    source_type: str = "huggingface"
-    dataset_name: Optional[str] = None
-    dataset_config_name: Optional[str] = None
-
-    train_split_name: str = "train"
-    val_split_name: Optional[str] = None
-    test_split_name: Optional[str] = None
-
-    text_fields: list[str] = field(default_factory=lambda: ["text"])
-
-    cache_dir: Optional[str] = None
-    streaming: bool = False
-
-    seed: int = 42
-    shuffle: bool = True
-    shuffle_buffer_size: int = 10_000
-
-    max_train_samples: Optional[int] = None
-    max_val_samples: Optional[int] = None
-    max_test_samples: Optional[int] = None
-
-    smoke_test: bool = False
-
-    # for local json.gz / dolma-style sources
-    data_files_glob: Optional[str] = None
-
-    # --------------------------------------------------
-    # dataloader behavior
-    # --------------------------------------------------
+    # loader behavior
     batch_size: int = 8
     shuffle_train: bool = True
 
     num_workers: int = 0
     pin_memory: bool = True
     drop_last: bool = True
+
 
 @dataclass
 class OptimizerConfig:
@@ -146,11 +110,13 @@ class LoggingConfig:
 
 @dataclass
 class RunConfig:
-    model: ModelConfig
-    optimizer: OptimizerConfig
-    scheduler: SchedulerConfig
-    logging: LoggingConfig
-    trainer: TrainerConfig
-    data: DataLoaderConfig
-    dataset: DatasetConfig
-    tokenizer: TokenizerConfig
+    model: ModelConfig = field(default_factory=ModelConfig)
+    optimizer: OptimizerConfig = field(default_factory=OptimizerConfig)
+    scheduler: SchedulerConfig = field(default_factory=SchedulerConfig)
+    logging: LoggingConfig = field(default_factory=LoggingConfig)
+
+    trainer: TrainerConfig = field(default_factory=TrainerConfig)
+
+    dataset: DatasetConfig = field(default_factory=DatasetConfig)
+    tokenizer: TokenizerConfig = field(default_factory=TokenizerConfig)
+    data: DataLoaderConfig = field(default_factory=DataLoaderConfig)

@@ -83,14 +83,13 @@ def build_scheduler(
     )
 
 
-def build_dataloaders(run_cfg):
-    if run_cfg.data.use_online_tokenization:
-        return build_text_dataloaders(
-            dataset_cfg=run_cfg.dataset,
-            loader_cfg=run_cfg.data,
-        )
-    return build_token_dataloaders(run_cfg.data)
+def build_dataloaders(run_cfg: Any):
+    use_online_tokenization = getattr(run_cfg.data, "use_online_tokenization", False)
 
+    if use_online_tokenization:
+        return build_text_dataloaders(run_cfg.dataset, run_cfg.data)
+
+    return build_token_dataloaders(run_cfg.data)
 
 def build_tokenizer(tokenizer_cfg: Any | None) -> BPETokenizer | None:
     if tokenizer_cfg is None:
@@ -147,7 +146,7 @@ def assemble_training_components(run_cfg: Any) -> dict[str, Any]:
     model = build_model(run_cfg.model)
     optimizer = build_optimizer(model, run_cfg.optimizer)
     scheduler = build_scheduler(optimizer, getattr(run_cfg, "scheduler", None))
-    train_loader, val_loader = build_dataloaders(run_cfg.data)
+    train_loader, val_loader = build_dataloaders(run_cfg)
     callbacks = build_callbacks(getattr(run_cfg, "logging", None))
 
     tokenizer_cfg = getattr(run_cfg, "tokenizer", None)
