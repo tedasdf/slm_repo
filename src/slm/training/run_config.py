@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal, Optional
 
+from src.slm.data.config import DatasetConfig
 from src.slm.model import ModelConfig
 
 
@@ -17,6 +18,10 @@ class TrainerConfig:
 
     world_size: int = 1
     
+    train_tokenizer_before_fit: bool = False
+    text_key: str = "text"
+    max_seq_len: int = 1024
+
     max_steps: int = 10_000
     max_epochs: Optional[int] = None
 
@@ -37,6 +42,7 @@ class TrainerConfig:
     metric_mode_for_best: str = "min"
 
     num_sanity_val_steps: int = 0
+
 
     def __post_init__(self) -> None:
         if self.max_steps <= 0:
@@ -140,9 +146,11 @@ class LoggingConfig:
 
 @dataclass
 class RunConfig:
-    model: ModelConfig = field(default_factory=ModelConfig)
-    optimizer: OptimizerConfig = field(default_factory=OptimizerConfig)
-    scheduler: SchedulerConfig = field(default_factory=SchedulerConfig)
-    trainer: TrainerConfig = field(default_factory=TrainerConfig)
-    data: DataLoaderConfig = field(default_factory=DataLoaderConfig)
-    logging: LoggingConfig = field(default_factory=LoggingConfig)
+    model: ModelConfig
+    optimizer: OptimizerConfig
+    scheduler: SchedulerConfig
+    logging: LoggingConfig
+    trainer: TrainerConfig
+    data: DataLoaderConfig
+    dataset: DatasetConfig
+    tokenizer: TokenizerConfig

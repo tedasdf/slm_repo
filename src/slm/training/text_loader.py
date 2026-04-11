@@ -17,6 +17,7 @@ class RawTextDataset(IterableDataset):
         seed_offset: int,
         max_samples: Optional[int] = None,
     ) -> None:
+        super().__init__()
         self.data_cfg = data_cfg
         self.split_name = split_name
         self.seed_offset = seed_offset
@@ -27,7 +28,7 @@ class RawTextDataset(IterableDataset):
             self.data_cfg,
             split_name=self.split_name,
             seed=self.data_cfg.seed + self.seed_offset,
-            smoke_test=getattr(self.data_cfg, "smoke_test", False),
+            smoke_test=self.data_cfg.smoke_test,
             max_samples=self.max_samples,
         ):
             text = extract_text(row, self.data_cfg.text_fields)
@@ -44,7 +45,7 @@ def build_dataloaders(data_cfg: DataLoaderConfig) -> tuple[DataLoader, DataLoade
         data_cfg=data_cfg,
         split_name=data_cfg.train_split_name,
         seed_offset=1,
-        max_samples=getattr(data_cfg, "max_train_samples", None),
+        max_samples=data_cfg.max_train_samples,
     )
 
     train_loader = DataLoader(
@@ -63,7 +64,7 @@ def build_dataloaders(data_cfg: DataLoaderConfig) -> tuple[DataLoader, DataLoade
             data_cfg=data_cfg,
             split_name=data_cfg.val_split_name,
             seed_offset=2,
-            max_samples=getattr(data_cfg, "max_val_samples", None),
+            max_samples=data_cfg.max_val_samples,
         )
 
         val_loader = DataLoader(

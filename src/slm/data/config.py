@@ -33,6 +33,9 @@ class DatasetConfig:
     shuffle: bool = True
     shuffle_buffer_size: int = 10_000
 
+from dataclasses import dataclass, field
+from typing import Optional
+
 
 @dataclass
 class TokenizerConfig:
@@ -47,6 +50,10 @@ class TokenizerConfig:
 
     reuse_existing: bool = True
     tokenizer_train_samples: Optional[int] = 200_000
+
+    # runtime / training additions
+    tokenizer_path: Optional[str] = None
+    allow_missing_tokenizer: bool = True
 
     @property
     def special_tokens(self) -> list[str]:

@@ -83,13 +83,13 @@ def build_scheduler(
     )
 
 
-def build_dataloaders(data_cfg: Any):
-    use_online_tokenization = getattr(data_cfg, "use_online_tokenization", False)
-
-    if use_online_tokenization:
-        return build_text_dataloaders(data_cfg)
-
-    return build_token_dataloaders(data_cfg)
+def build_dataloaders(run_cfg):
+    if run_cfg.data.use_online_tokenization:
+        return build_text_dataloaders(
+            dataset_cfg=run_cfg.dataset,
+            loader_cfg=run_cfg.data,
+        )
+    return build_token_dataloaders(run_cfg.data)
 
 
 def build_tokenizer(tokenizer_cfg: Any | None) -> BPETokenizer | None:
@@ -102,6 +102,8 @@ def build_tokenizer(tokenizer_cfg: Any | None) -> BPETokenizer | None:
 
     tokenizer_path = Path(tokenizer_path)
     if not tokenizer_path.exists():
+        if not getattr(tokenizer_cfg, "allow_missing_tokenizer", True):
+            raise FileNotFoundError(f"Tokenizer file not found: {tokenizer_path}")
         return None
 
     return BPETokenizer.load(tokenizer_path)
