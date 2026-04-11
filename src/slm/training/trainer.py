@@ -14,7 +14,7 @@ from .run_config import TrainerConfig
 from .state import TrainState
 
 from ..data.tokenizer import BPETokenizer
-from ..data.tokenization import maybe_tokenize_batch
+from ..data.tokenization import maybe_tokenize_batch, fit_or_load_tokenizer_from_loader
 
 def move_to_device(batch: Any, device: torch.device) -> Any:
     if torch.is_tensor(batch):
