@@ -39,11 +39,12 @@ optimizer:
 
 logging:
   use_print_callback: true
-  use_wandb: false
+  use_wandb: true
   wandb_project: "slm-runs"
-  wandb_run_name: "baseline"
-  wandb_tags:
-    - "baseline"
+  wandb_entity: null
+  wandb_run_name: null
+  wandb_mode: "online"   # use "disabled" or "offline" if needed
+  wandb_tags: ["baseline", "online_tokenization"]
 
 trainer:
   device: "cuda"
@@ -84,12 +85,3 @@ data:
   num_workers: 0
   pin_memory: true
   drop_last: true
-
-
-logging:
-  use_wandb: true
-  wandb_project: "slm-runs"
-  wandb_entity: null
-  wandb_run_name: null
-  wandb_mode: "online"   # use "disabled" or "offline" if needed
-  wandb_tags: ["baseline", "online_tokenization"]
