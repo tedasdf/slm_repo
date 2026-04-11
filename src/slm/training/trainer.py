@@ -14,7 +14,7 @@ from .run_config import TrainerConfig
 from .state import TrainState
 
 from ..data.tokenizer import BPETokenizer
-from ..data.tokenization import fit_tokenizer_from_loader, maybe_tokenize_batch
+from ..data.tokenization import maybe_tokenize_batch
 
 def move_to_device(batch: Any, device: torch.device) -> Any:
     if torch.is_tensor(batch):
@@ -187,7 +187,17 @@ class Trainer:
                 "train_tokenizer_before_fit=True but tokenizer_cfg was not provided."
             )
 
-        self.tokenizer = fit_tokenizer_from_loader(
+        # self.tokenizer = fit_tokenizer_from_loader(
+        #     self.train_loader,
+        #     vocab_size=self.tokenizer_cfg.vocab_size,
+        #     special_tokens=self.tokenizer_cfg.special_tokens,
+        #     unk_token=self.tokenizer_cfg.unk_token,
+        #     min_frequency=self.tokenizer_cfg.min_frequency,
+        #     text_key=getattr(self.config, "text_key", "text"),
+        #     max_train_texts=getattr(self.tokenizer_cfg, "tokenizer_train_samples", None),
+        # )
+
+        self.tokenizer = fit_or_load_tokenizer_from_loader(
             self.train_loader,
             vocab_size=self.tokenizer_cfg.vocab_size,
             special_tokens=self.tokenizer_cfg.special_tokens,
@@ -195,8 +205,10 @@ class Trainer:
             min_frequency=self.tokenizer_cfg.min_frequency,
             text_key=getattr(self.config, "text_key", "text"),
             max_train_texts=getattr(self.tokenizer_cfg, "tokenizer_train_samples", None),
+            tokenizer_path=getattr(self.tokenizer_cfg, "tokenizer_path", None),
+            reuse_existing=getattr(self.tokenizer_cfg, "reuse_existing", True),
+            save_if_trained=True,
         )
-
     def _tokenize_batch_if_needed(self, batch: Any) -> Any:
         out = maybe_tokenize_batch(
             batch,

@@ -115,7 +115,7 @@ def encode_text(
 
     return ids
 
-def fit_tokenizer_from_loader(
+def fit_or_load_tokenizer_from_loader(
     train_loader: Any,
     *,
     vocab_size: int,
@@ -123,8 +123,16 @@ def fit_tokenizer_from_loader(
     unk_token: str,
     min_frequency: int,
     text_key: str = "text",
-    max_train_texts: int | None = None,
+    max_train_texts: Optional[int] = None,
+    tokenizer_path: Optional[str] = None,
+    reuse_existing: bool = True,
+    save_if_trained: bool = True,
 ) -> BPETokenizer:
+    if tokenizer_path is not None and reuse_existing:
+        path = Path(tokenizer_path)
+        if path.exists():
+            return BPETokenizer.load(path)
+
     seen = 0
 
     def text_iterator():
@@ -149,6 +157,11 @@ def fit_tokenizer_from_loader(
             "Tokenizer training saw zero text samples. "
             "Make sure your loader yields raw text batches."
         )
+
+    if tokenizer_path is not None and save_if_trained:
+        path = Path(tokenizer_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tok.save(path)
 
     return tok
 
