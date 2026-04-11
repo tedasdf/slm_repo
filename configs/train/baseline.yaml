@@ -69,15 +69,15 @@ trainer:
 
 dataset:
   source_type: "dolma_local"
-  dataset_name: null
-  dataset_config_name: null
+  data_files_glob: "./artifacts/data/dolma_v1_6_sample/**/*.json.gz"
+  dataset_name: "allenai/dolma3_mix-6T"
+  dataset_config_name: "default"
   train_split_name: "train"
   val_split_name: null
   test_split_name: null
-
   text_fields: ["text"]
-  cache_dir: null
-  streaming: false
+  cache_dir: "artifacts/data/hf_cache"
+  streaming: true
 
   max_train_samples: null
   max_val_samples: 2000
@@ -87,18 +87,19 @@ dataset:
   shuffle: true
   shuffle_buffer_size: 10000
 
-  data_files_glob: "artifacts/data/dolma_v1_6_sample/**/*.json.gz"
 
 tokenizer:
+  tokenizer_type: "bpe"
   vocab_size: 16000
   min_frequency: 2
-  special_tokens: ["<pad>", "<unk>", "<eos>"]
-  unk_token: "<unk>"
   pad_token: "<pad>"
   eos_token: "<eos>"
+  unk_token: "<unk>"
   bos_token: null
-  reuse_existing: false
-  tokenizer_train_samples: 50000
+  reuse_existing: true
+  tokenizer_train_samples: 500000
+  tokenizer_path: "artifacts/tokenizer/runtime/tokenizer.json"
+  allow_missing_tokenizer: true
 
 data:
   use_online_tokenization: true

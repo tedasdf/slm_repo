@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal, Optional
 
-from src.slm.data.config import DatasetConfig, TokenizerConfig
-from src.slm.model import ModelConfig
+from ..data.config import DatasetConfig, TokenizerConfig
+from ..model import ModelConfig
 
 
 PrecisionType = Literal["fp32", "fp16", "bf16"]

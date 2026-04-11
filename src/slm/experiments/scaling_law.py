@@ -398,15 +398,54 @@ class ScalingLawExperiment():
             "max_theoretical": max_theoretical,
             "max_actual": max_actual,
         }
+
+    def debug_print_resolved_grid(self, param_mode: str = "kaplan") -> None:
+        for compute_budget in self.compute_budgets:
+            print(f"\n========== compute_budget={compute_budget:.3e} ==========")
+
+            for data_param_ratio in self.data_param_ratios:
+                theoretical = self._resolve_targets_from_compute(
+                    compute_budget=compute_budget,
+                    data_param_ratio=data_param_ratio,
+                    param_mode=param_mode,
+                )
+
+                chosen = self._choose_best_architectures(
+                    target_params=theoretical["target_params"],
+                    param_mode=param_mode,
+                    return_per_depth=False,
+                )
+
+                limits = self._resolve_run_limits(
+                    cfg=self.base_cfg,
+                    compute_budget=compute_budget,
+                    actual_params=int(chosen["actual_params"]),
+                )
+
+                print(
+                    f"ratio={data_param_ratio:.2f} | "
+                    f"layers={chosen['num_layers']} | "
+                    f"d_model={chosen['model_dim']} | "
+                    f"heads={chosen['num_heads']} | "
+                    f"head_dim={chosen['head_dim']} | "
+                    f"target_params={theoretical['target_params']:.0f} | "
+                    f"actual_params={chosen['actual_params']} | "
+                    f"param_rel_error={chosen['param_rel_error']:.4f} | "
+                    f"target_tokens={theoretical['target_train_tokens']:.0f} | "
+                    f"actual_target_tokens={limits['actual_target_train_tokens']} | "
+                    f"tokens_per_step={limits['tokens_per_step']} | "
+                    f"max_steps={limits['max_steps']}"
+                )
+
     ### finding the best model globally
 
     ## config training into ###
     def _tokens_per_step(self, cfg: RunConfig) -> int:
         batch_size = int(cfg.data.batch_size)
-        seq_len = int(getattr(cfg.trainer, "train_seq_len", cfg.model.max_seq_len))
+        seq_len = int(cfg.data.seq_len)
         grad_accum_steps = int(cfg.trainer.grad_accum_steps)
         return batch_size * seq_len * grad_accum_steps
-    
+
     def _resolve_run_limits(
         self,
         *,
@@ -628,39 +667,40 @@ if __name__ == "__main__":
         base_cfg=cfg,
         experiment_cfg=experiment_cfg,
     )
+    scaling_experiment.debug_print_resolved_grid(param_mode="kaplan")
 
-    seen_architectures: dict[tuple[int, int, int], list[tuple[float, float, str]]] = {}
+    # seen_architectures: dict[tuple[int, int, int], list[tuple[float, float, str]]] = {}
     
-    result = scaling_experiment.inspect_overlapping_architectures(param_mode="kaplan")
+    # result = scaling_experiment.inspect_overlapping_architectures(param_mode="kaplan")
 
-    overlaps = result["overlaps_by_budget"]
-    max_theoretical = result["max_theoretical"]
-    max_actual = result["max_actual"]
+    # overlaps = result["overlaps_by_budget"]
+    # max_theoretical = result["max_theoretical"]
+    # max_actual = result["max_actual"]
 
-    print("\n===== HIGHEST THEORETICAL TOKENS =====")
-    print(max_theoretical)
+    # print("\n===== HIGHEST THEORETICAL TOKENS =====")
+    # print(max_theoretical)
 
-    print("\n===== HIGHEST ACTUAL TOKENS =====")
-    print(max_actual)
+    # print("\n===== HIGHEST ACTUAL TOKENS =====")
+    # print(max_actual)
 
-    for compute_budget, arch_dict in overlaps.items():
-        print(f"\n========== compute_budget={compute_budget:.3e} ==========")
+    # for compute_budget, arch_dict in overlaps.items():
+    #     print(f"\n========== compute_budget={compute_budget:.3e} ==========")
 
-        if not arch_dict:
-            print("No overlapping architectures within this compute budget.")
-            continue
+    #     if not arch_dict:
+    #         print("No overlapping architectures within this compute budget.")
+    #         continue
 
-        for arch, runs in arch_dict.items():
-            print(f"arch={arch} used by {len(runs)} ratios")
-            for run in runs:
-                print(
-                    f"  ratio={run['data_param_ratio']:.2f} | "
-                    f"target_params={run['target_params']:.0f} | "
-                    f"target_tokens={run['target_train_tokens']:.0f} | "
-                    f"actual_target_tokens={run['actual_target_train_tokens']:.0f} | "
-                    f"actual_params={run['actual_params']} | "
-                    f"param_rel_error={run['param_rel_error']:.4f}"
-                )
+    #     for arch, runs in arch_dict.items():
+    #         print(f"arch={arch} used by {len(runs)} ratios")
+    #         for run in runs:
+    #             print(
+    #                 f"  ratio={run['data_param_ratio']:.2f} | "
+    #                 f"target_params={run['target_params']:.0f} | "
+    #                 f"target_tokens={run['target_train_tokens']:.0f} | "
+    #                 f"actual_target_tokens={run['actual_target_train_tokens']:.0f} | "
+    #                 f"actual_params={run['actual_params']} | "
+    #                 f"param_rel_error={run['param_rel_error']:.4f}"
+    #             )
                 
     # max_theoretical = None
     # max_actual = None
