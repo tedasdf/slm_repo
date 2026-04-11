@@ -309,27 +309,33 @@ class Trainer:
         total_loss = 0.0
         total_batches = 0
 
-        for batch_idx, batch in enumerate(self.val_loader):
-            if self.config.max_eval_batches is not None and batch_idx >= self.config.max_eval_batches:
-                break
+        try:
+            for batch_idx, batch in enumerate(self.val_loader):
+                if (
+                    self.config.max_eval_batches is not None
+                    and batch_idx >= self.config.max_eval_batches
+                ):
+                    break
 
-            loss, _ = self._compute_loss(batch)
-            total_loss += float(loss.detach().item())
-            total_batches += 1
+                loss, _, _ = self._compute_loss(batch)
+                total_loss += float(loss.detach().item())
+                total_batches += 1
 
-        val_loss = total_loss / max(total_batches, 1)
-        self.state.last_val_loss = val_loss
-        is_best = self.state.update_best_val(val_loss)
+            val_loss = total_loss / max(total_batches, 1)
+            self.state.last_val_loss = val_loss
+            is_best = self.state.update_best_val(val_loss)
 
-        eval_outputs = {
-            "val_loss": val_loss,
-            "is_best": is_best,
-            "num_eval_batches": total_batches,
-        }
+            eval_outputs = {
+                "val_loss": val_loss,
+                "is_best": is_best,
+                "num_eval_batches": total_batches,
+            }
 
-        self.callbacks.on_eval_end(self, eval_outputs)
-        self.model.train()
-        return eval_outputs
+            self.callbacks.on_eval_end(self, eval_outputs)
+            return eval_outputs
+
+        finally:
+            self.model.train()
     
     def save_checkpoint(self, path: str | Path) -> None:
         path = Path(path)
@@ -369,7 +375,10 @@ class Trainer:
             self._fit_tokenizer_if_needed()
 
             if self.config.num_sanity_val_steps > 0 and self.val_loader is not None:
-                self.validate()
+                eval_outputs = self.validate()
+                eval_outputs["step"] = self.state.step
+                eval_outputs["sanity_check"] = True
+                self.callbacks.on_step_end(self, eval_outputs)
 
             while self.state.step < self.config.max_steps and not self.state.should_stop:
                 self.state.epoch += 1
@@ -402,7 +411,8 @@ class Trainer:
                             self.callbacks.on_step_end(self, step_outputs)
 
                         if self.val_loader is not None and self.state.step % self.config.eval_every == 0:
-                            self.validate()
+                            eval_outputs = self.validate()
+                            self.callbacks.on_step_end(self, eval_outputs)
 
                         if self.state.step % self.config.checkpoint_every == 0:
                             ckpt_path = Path("artifacts/checkpoints") / f"step_{self.state.step}.pt"
