@@ -13,6 +13,6 @@ __all__ = [
     "PrintMetricsCallback",
     "WandBCallback",
     "RunConfig",
-    " build_model",
+    "build_model",
     "build_trainer"
 ]

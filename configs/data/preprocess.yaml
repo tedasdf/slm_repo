@@ -1,7 +1,8 @@
 run:
-  input_dir: "artifacts/data/sample_1000"
+  input_dir: "dataset/processed_datasets/unified_python/sample_1000"
   canonicalize_output_dir: "artifacts/preprocess/01_canonicalize/sample_1000"
   minhash_output_dir: "artifacts/preprocess/02_minhash/sample_1000"
+  pairs_output_dir: "artifacts/preprocess/03_pairs/sample_1000"
 
   debug: false
   debug_max_rows: 2000
@@ -41,6 +42,14 @@ minhash:
   shingle_n: 5
   num_perm: 128
   seed0: 1337
+
+pairs:
+  batch_size: 512
+  k: 128
+  b: 32
+  max_bucket_size: 2000
+  max_pairs_per_bucket: 2000
+  
 wandb:
   enabled: True
   project: "slm-preprocess"

@@ -7,7 +7,8 @@ import hashlib
 import gzip
 import os
 from pathlib import Path
-from typing import Iterator, Optional
+from typing import Any, Iterator, Optional
+import torch
 import glob
 import json
 import random
@@ -16,7 +17,7 @@ import numpy as np
 from datasets import load_dataset
 from omegaconf import OmegaConf
 from tokenizers import Tokenizer, decoders, models, pre_tokenizers, trainers
-
+from tqdm.auto import tqdm
 from src.slm.utils.config import resolve_config_paths
 from src.slm.utils.paths import finish_run, start_run
 
@@ -27,6 +28,208 @@ from .config import PreprocessStageConfig
 class PreprocessArtifactPaths:
     tokenizer_path: str
     splits_dir: str
+
+
+def train_tokenizer(
+    text_iterator: Iterator[str],
+    vocab_size: int,
+    special_tokens: list[str],
+    unk_token: str,
+    min_frequency: int,
+) -> BPETokenizer:
+    tokenizer = Tokenizer(models.BPE(unk_token=unk_token))
+    tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel()
+    tokenizer.decoder = decoders.ByteLevel()
+
+    trainer = trainers.BpeTrainer(
+        vocab_size=vocab_size,
+        special_tokens=special_tokens,
+        min_frequency=min_frequency,
+    )
+
+    tokenizer.train_from_iterator(text_iterator, trainer=trainer)
+    return BPETokenizer(tokenizer)
+
+
+def train_or_load_tokenizer(
+    cfg: PreprocessStageConfig,
+    tokenizer_path: Path,
+    smoke_test: bool,
+) -> BPETokenizer:
+    tokenizer_cfg = cfg.tokenizer
+
+    if tokenizer_cfg.reuse_existing and tokenizer_path.exists():
+        tok = BPETokenizer.load(tokenizer_path)
+        print(f"Loaded existing tokenizer from: {tokenizer_path}")
+        return tok
+
+    tokenizer_train_samples = tokenizer_cfg.tokenizer_train_samples
+    if smoke_test:
+        tokenizer_train_samples = min(tokenizer_train_samples or 5_000, 5_000)
+
+    raw_text_iter = itertools.islice(
+        iter_final_split_texts(cfg, role="train", smoke_test=smoke_test),
+        tokenizer_train_samples,
+    )
+
+    text_iter = tqdm(
+        raw_text_iter,
+        total=tokenizer_train_samples,
+        desc="Training tokenizer",
+        unit="docs",
+    )
+
+    tok = train_tokenizer(
+        text_iterator=text_iter,
+        vocab_size=tokenizer_cfg.vocab_size,
+        special_tokens=tokenizer_cfg.special_tokens,
+        unk_token=tokenizer_cfg.unk_token,
+        min_frequency=tokenizer_cfg.min_frequency,
+    )
+    tok.save(tokenizer_path)
+    print(f"Saved tokenizer to: {tokenizer_path}")
+    print(f"Tokenizer trained on up to {tokenizer_train_samples:,} documents.")
+    return tok
+
+
+# ============================================================
+# runtime tokenization helpers
+# ============================================================
+def encode_text(
+    text: str,
+    tok: BPETokenizer,
+    *,
+    eos_token: str | None = None,
+    append_eos: bool = True,
+    max_seq_len: int | None = None,
+) -> list[int]:
+    ids = list(tok.encode(text))
+
+    if append_eos and eos_token is not None:
+        eos_id = tok.token_to_id(eos_token)
+        if max_seq_len is not None and max_seq_len > 0:
+            ids = ids[: max_seq_len - 1]
+        ids.append(eos_id)
+    elif max_seq_len is not None:
+        ids = ids[:max_seq_len]
+
+    return ids
+
+def fit_tokenizer_from_loader(
+    train_loader: Any,
+    *,
+    vocab_size: int,
+    special_tokens: list[str],
+    unk_token: str,
+    min_frequency: int,
+    text_key: str = "text",
+    max_train_texts: int | None = None,
+) -> BPETokenizer:
+    seen = 0
+
+    def text_iterator():
+        nonlocal seen
+        for batch in train_loader:
+            for text in iter_texts_from_batch(batch, text_key=text_key):
+                yield text
+                seen += 1
+                if max_train_texts is not None and seen >= max_train_texts:
+                    return
+
+    tok = train_tokenizer(
+        text_iterator=text_iterator(),
+        vocab_size=vocab_size,
+        special_tokens=special_tokens,
+        unk_token=unk_token,
+        min_frequency=min_frequency,
+    )
+
+    if seen == 0:
+        raise ValueError(
+            "Tokenizer training saw zero text samples. "
+            "Make sure your loader yields raw text batches."
+        )
+
+    return tok
+
+def tokenize_text_batch(
+    texts: list[str],
+    tok: BPETokenizer,
+    *,
+    eos_token: str | None = None,
+    pad_token: str | None = None,
+    append_eos: bool = True,
+    max_seq_len: int | None = None,
+) -> dict[str, torch.Tensor]:
+    encoded_rows: list[list[int]] = []
+
+    for text in texts:
+        ids = encode_text(
+            text,
+            tok,
+            eos_token=eos_token,
+            append_eos=append_eos,
+            max_seq_len=max_seq_len,
+        )
+        encoded_rows.append(ids)
+
+    if not encoded_rows:
+        empty = torch.zeros((0, 0), dtype=torch.long)
+        return {
+            "input_ids": empty,
+            "labels": empty,
+        }
+
+    pad_id = tok.token_to_id(pad_token) if pad_token is not None else None
+    if pad_id is None:
+        pad_id = tok.token_to_id(eos_token) if eos_token is not None else 0
+
+    max_len = max(len(ids) for ids in encoded_rows)
+
+    input_ids = torch.full((len(encoded_rows), max_len), pad_id, dtype=torch.long)
+    labels = torch.full((len(encoded_rows), max_len), -100, dtype=torch.long)
+
+    for i, ids in enumerate(encoded_rows):
+        if not ids:
+            continue
+        row = torch.tensor(ids, dtype=torch.long)
+        seq_len = row.numel()
+        input_ids[i, :seq_len] = row
+        labels[i, :seq_len] = row
+
+    return {
+        "input_ids": input_ids,
+        "labels": labels,
+    }
+
+def maybe_tokenize_batch(
+    batch: Any,
+    tok: BPETokenizer | None,
+    *,
+    text_key: str = "text",
+    eos_token: str | None = None,
+    pad_token: str | None = None,
+    append_eos: bool = True,
+    max_seq_len: int | None = None,
+) -> Any:
+    if tok is None:
+        return batch
+
+    if isinstance(batch, dict) and "input_ids" in batch:
+        return batch
+
+    texts = list(iter_texts_from_batch(batch, text_key=text_key))
+    if not texts:
+        return batch
+
+    return tokenize_text_batch(
+        texts=texts,
+        tok=tok,
+        eos_token=eos_token,
+        pad_token=pad_token,
+        append_eos=append_eos,
+        max_seq_len=max_seq_len,
+    )
 
 
 # helper functions
@@ -77,6 +280,45 @@ def extract_text(row: dict, text_fields: list[str]) -> Optional[str]:
     if not parts:
         return None
     return "\n".join(parts)
+
+def iter_texts_from_batch(batch: Any, text_key: str = "text") -> Iterator[str]:
+    if isinstance(batch, dict):
+        texts = batch.get(text_key)
+        if texts is None:
+            return
+
+        if isinstance(texts, str):
+            cleaned = texts.strip()
+            if cleaned:
+                yield cleaned
+            return
+
+        for text in texts:
+            if isinstance(text, str):
+                cleaned = text.strip()
+                if cleaned:
+                    yield cleaned
+        return
+
+    if isinstance(batch, (list, tuple)):
+        if len(batch) == 0:
+            return
+
+        first = batch[0]
+
+        if isinstance(first, str):
+            cleaned = first.strip()
+            if cleaned:
+                yield cleaned
+            return
+
+        if isinstance(first, (list, tuple)):
+            for text in first:
+                if isinstance(text, str):
+                    cleaned = text.strip()
+                    if cleaned:
+                        yield cleaned
+            return
 
 def iter_huggingface_examples(
     dataset_cfg,
@@ -152,7 +394,6 @@ def iter_examples(
             break
         count += 1
         yield row
-
 
 def iter_dolma_json_gz_examples(
     dataset_cfg,
@@ -275,62 +516,6 @@ def iter_final_split_texts(
             yield text
 
 
-
-# tokenizer functions
-def train_tokenizer(
-    text_iterator: Iterator[str],
-    vocab_size: int,
-    special_tokens: list[str],
-    unk_token: str,
-    min_frequency: int,
-) -> Tokenizer:
-    tokenizer = Tokenizer(models.BPE(unk_token=unk_token))
-    tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel()
-    tokenizer.decoder = decoders.ByteLevel()
-    trainer = trainers.BpeTrainer(
-        vocab_size=vocab_size,
-        special_tokens=special_tokens,
-        min_frequency=min_frequency,
-    )
-    tokenizer.train_from_iterator(text_iterator, trainer=trainer)
-    return tokenizer
-
-def train_or_load_tokenizer(
-    cfg: PreprocessStageConfig,
-    tokenizer_path: Path,
-    smoke_test: bool,
-) -> BPETokenizer:
-    tokenizer_cfg = cfg.tokenizer
-
-    if tokenizer_cfg.reuse_existing and tokenizer_path.exists():
-        tok = BPETokenizer.load(tokenizer_path)
-        print(f"Loaded existing tokenizer from: {tokenizer_path}")
-        return tok
-
-    tokenizer_train_samples = tokenizer_cfg.tokenizer_train_samples
-    if smoke_test:
-        tokenizer_train_samples = min(tokenizer_train_samples or 5_000, 5_000)
-
-    text_iter = itertools.islice(
-        iter_final_split_texts(cfg, role="train", smoke_test=smoke_test),
-        tokenizer_train_samples,
-    )
-
-    vocab = train_tokenizer(
-        text_iter,
-        vocab_size=tokenizer_cfg.vocab_size,
-        special_tokens=tokenizer_cfg.special_tokens,
-        unk_token=tokenizer_cfg.unk_token,
-        min_frequency=tokenizer_cfg.min_frequency,
-    )
-    tok = BPETokenizer(vocab)
-    tok.save(tokenizer_path)
-    print(f"Saved tokenizer to: {tokenizer_path}")
-    print(f"Tokenizer trained on up to {tokenizer_train_samples:,} documents.")
-    return tok
-
-
-
 #### Writing bin files #####
 def _adjust_targets(preprocess_cfg, smoke_test: bool) -> tuple[int, int, int]:
     train_target = preprocess_cfg.target_train_tokens
@@ -365,7 +550,6 @@ def encode_and_write_bins(
     val_path = Path(artifacts.splits_dir) / "val"
     test_path = Path(artifacts.splits_dir) / "test"
 
-    eos_id = tok.token_to_id(tokenizer_cfg.eos_token)
     bin_dtype = choose_bin_dtype(tok.vocab_size)
 
     stats = {
@@ -398,13 +582,24 @@ def encode_and_write_bins(
             path = split_dir / f"{split_name}_{idx:06d}.bin"
             return path.open("wb")
 
+        pbar = tqdm(
+            total=target_tokens,
+            desc=f"Writing {split_name}",
+            unit="tok",
+            dynamic_ncols=True,
+        )
+
         try:
             f = open_new_shard(shard_idx)
 
             for text in text_iter:
-                ids = tok.encode(text)
-                if preprocess_cfg.append_eos:
-                    ids.append(eos_id)
+                ids = encode_text(
+                    text,
+                    tok,
+                    eos_token=tokenizer_cfg.eos_token,
+                    append_eos=preprocess_cfg.append_eos,
+                    max_seq_len=None,
+                )
                 if not ids:
                     continue
 
@@ -423,9 +618,16 @@ def encode_and_write_bins(
                 _write_encoded(arr, f, token_key, char_key, sample_key, stats, n_chars)
                 shard_bytes += sample_bytes
 
+                pbar.update(int(arr.size))
+                pbar.set_postfix(
+                    samples=stats[sample_key],
+                    shards=shard_idx + 1,
+                )
+
                 if stats[token_key] >= target_tokens:
                     break
         finally:
+            pbar.close()
             if f is not None:
                 f.close()
 
@@ -452,8 +654,6 @@ def encode_and_write_bins(
         )
 
     return stats
-
-
 
 def run_single_config(config_path: Path, smoke_test: bool) -> None:
     print("\n" + "=" * 80)

@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import torch
 import torch.nn as nn
 
-
-
 from src.slm.training.lm_loader import build_dataloaders as build_token_dataloaders
+from src.slm.training.text_loader import build_dataloaders as build_text_dataloaders
+from src.slm.data.tokenizer import BPETokenizer
 from src.slm.model import ModelConfig, TransformerLM
 from .logging import PrintMetricsCallback, WandBCallback
 from .trainer import Trainer
@@ -28,6 +29,7 @@ def build_model(model_cfg: ModelConfig) -> nn.Module:
 
     return TransformerLM(model_cfg)
 
+
 def build_optimizer(model: nn.Module, optimizer_cfg: Any) -> torch.optim.Optimizer:
     optimizer_type = getattr(optimizer_cfg, "optimizer_type", "adamw").lower()
 
@@ -46,7 +48,10 @@ def build_optimizer(model: nn.Module, optimizer_cfg: Any) -> torch.optim.Optimiz
     )
 
 
-def build_scheduler(optimizer: torch.optim.Optimizer, scheduler_cfg: Any | None) -> Any | None:
+def build_scheduler(
+    optimizer: torch.optim.Optimizer,
+    scheduler_cfg: Any | None,
+) -> Any | None:
     if scheduler_cfg is None:
         return None
 
@@ -79,7 +84,27 @@ def build_scheduler(optimizer: torch.optim.Optimizer, scheduler_cfg: Any | None)
 
 
 def build_dataloaders(data_cfg: Any):
+    use_online_tokenization = getattr(data_cfg, "use_online_tokenization", False)
+
+    if use_online_tokenization:
+        return build_text_dataloaders(data_cfg)
+
     return build_token_dataloaders(data_cfg)
+
+
+def build_tokenizer(tokenizer_cfg: Any | None) -> BPETokenizer | None:
+    if tokenizer_cfg is None:
+        return None
+
+    tokenizer_path = getattr(tokenizer_cfg, "tokenizer_path", None)
+    if tokenizer_path is None:
+        return None
+
+    tokenizer_path = Path(tokenizer_path)
+    if not tokenizer_path.exists():
+        return None
+
+    return BPETokenizer.load(tokenizer_path)
 
 
 def build_callbacks(logging_cfg: Any | None) -> list[Any]:
@@ -115,12 +140,16 @@ def assemble_training_components(run_cfg: Any) -> dict[str, Any]:
     and optionally:
       - scheduler
       - logging
+      - tokenizer
     """
     model = build_model(run_cfg.model)
     optimizer = build_optimizer(model, run_cfg.optimizer)
     scheduler = build_scheduler(optimizer, getattr(run_cfg, "scheduler", None))
     train_loader, val_loader = build_dataloaders(run_cfg.data)
     callbacks = build_callbacks(getattr(run_cfg, "logging", None))
+
+    tokenizer_cfg = getattr(run_cfg, "tokenizer", None)
+    tokenizer = build_tokenizer(tokenizer_cfg)
 
     return {
         "model": model,
@@ -130,9 +159,9 @@ def assemble_training_components(run_cfg: Any) -> dict[str, Any]:
         "val_loader": val_loader,
         "callbacks": callbacks,
         "trainer_cfg": run_cfg.trainer,
+        "tokenizer": tokenizer,
+        "tokenizer_cfg": tokenizer_cfg,
     }
-
-
 
 
 def build_trainer(run_cfg: Any, extra_callbacks: list[Any] | None = None) -> Trainer:
@@ -150,5 +179,7 @@ def build_trainer(run_cfg: Any, extra_callbacks: list[Any] | None = None) -> Tra
         val_loader=parts["val_loader"],
         config=parts["trainer_cfg"],
         callbacks=callbacks,
+        tokenizer=parts.get("tokenizer"),
+        tokenizer_cfg=parts.get("tokenizer_cfg"),
     )
     return trainer

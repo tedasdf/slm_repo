@@ -4,7 +4,7 @@ import contextlib
 import math
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -13,6 +13,8 @@ from .callbacks import CallbackList
 from .run_config import TrainerConfig
 from .state import TrainState
 
+from ..data.tokenizer import BPETokenizer
+from ..data.tokenization import fit_tokenizer_from_loader, maybe_tokenize_batch
 
 def move_to_device(batch: Any, device: torch.device) -> Any:
     if torch.is_tensor(batch):
@@ -32,11 +34,15 @@ class Trainer:
         train_loader: Any,
         config: TrainerConfig,
         *,
+        tokenizer: BPETokenizer | None = None,
+        tokenizer_cfg: Any | None = None,
         val_loader: Any | None = None,
         scheduler: Any | None = None,
         callbacks: list[Any] | None = None,
         loss_fn: Any | None = None,
     ) -> None:
+        self.tokenizer = tokenizer
+        self.tokenizer_cfg = tokenizer_cfg
         self.model = model
         self.optimizer = optimizer
         self.scheduler = scheduler
@@ -57,7 +63,7 @@ class Trainer:
             self.model = torch.compile(self.model)
 
         self.grad_scaler = torch.cuda.amp.GradScaler(enabled=self._use_grad_scaler())
-
+        
     @classmethod
     def from_components(cls, components: dict[str, Any]) -> "Trainer":
         required = [
@@ -81,6 +87,8 @@ class Trainer:
             val_loader=components["val_loader"],
             config=components["trainer_cfg"],
             callbacks=components["callbacks"],
+            tokenizer=components.get("tokenizer"),
+            tokenizer_cfg=components.get("tokenizer_cfg"),
         )
 
     def _use_autocast(self) -> bool:
@@ -121,6 +129,7 @@ class Trainer:
         return batch, None
 
     def _compute_loss(self, batch: Any) -> tuple[torch.Tensor, dict[str, Any]]:
+        batch = self._tokenize_batch_if_needed(batch)
         batch = move_to_device(batch, self.device)
         model_inputs, targets = self._extract_model_inputs(batch)
 
@@ -169,8 +178,52 @@ class Trainer:
             return None
         return math.sqrt(total_sq)
 
+    def _fit_tokenizer_if_needed(self) -> None:
+        if self.tokenizer is not None:
+            return
+
+        if not getattr(self.config, "train_tokenizer_before_fit", False):
+            return
+
+        if self.tokenizer_cfg is None:
+            raise ValueError(
+                "train_tokenizer_before_fit=True but tokenizer_cfg was not provided."
+            )
+
+        self.tokenizer = fit_tokenizer_from_loader(
+            self.train_loader,
+            vocab_size=self.tokenizer_cfg.vocab_size,
+            special_tokens=self.tokenizer_cfg.special_tokens,
+            unk_token=self.tokenizer_cfg.unk_token,
+            min_frequency=self.tokenizer_cfg.min_frequency,
+            text_key=getattr(self.config, "text_key", "text"),
+            max_train_texts=getattr(self.tokenizer_cfg, "tokenizer_train_samples", None),
+        )
+
+    def _tokenize_batch_if_needed(self, batch: Any) -> Any:
+        out = maybe_tokenize_batch(
+            batch,
+            self.tokenizer,
+            text_key=getattr(self.config, "text_key", "text"),
+            eos_token=getattr(self.tokenizer_cfg, "eos_token", None)
+            if self.tokenizer_cfg is not None else None,
+            pad_token=getattr(self.tokenizer_cfg, "pad_token", None)
+            if self.tokenizer_cfg is not None else None,
+            append_eos=getattr(self.tokenizer_cfg, "append_eos", True)
+            if self.tokenizer_cfg is not None else True,
+            max_seq_len=getattr(self.config, "max_seq_len", None),
+        )
+
+        if out is batch and isinstance(batch, dict) and getattr(self.config, "text_key", "text") in batch:
+            raise ValueError(
+                "Received raw-text batch but no tokenizer is available. "
+                "Provide a tokenizer or enable tokenizer fitting before training."
+            )
+
+        return out
+
+
     def train_step(self, batch: Any) -> dict[str, Any]:
-        step_start = time.time()
         self.callbacks.on_step_start(self)
 
         loss, outputs = self._compute_loss(batch)
@@ -293,6 +346,8 @@ class Trainer:
         self.callbacks.on_train_start(self)
 
         try:
+            self._fit_tokenizer_if_needed()
+            
             if self.config.num_sanity_val_steps > 0 and self.val_loader is not None:
                 self.validate()
 

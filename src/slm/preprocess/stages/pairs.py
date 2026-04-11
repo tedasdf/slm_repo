@@ -1,8 +1,11 @@
+from __future__ import annotations
+
 import hashlib
+import random
 from dataclasses import dataclass
 from itertools import combinations
-import ray
-import random
+from functools import partial
+from typing import Any
 
 
 @dataclass
@@ -14,36 +17,42 @@ class LSHConfig:
     max_pairs_per_bucket: int = 2000
 
 
-def band_key(sig, band_idx, r):
+def band_key(sig: list[int], band_idx: int, r: int) -> str:
     start = band_idx * r
     bb = b"".join(
-        int(v).to_bytes(8, "little", signed=True) for v in sig[start : start + r]
+        int(v).to_bytes(8, "little", signed=True)
+        for v in sig[start : start + r]
     )
     h = hashlib.blake2b(bb, digest_size=8).hexdigest()
     return f"{band_idx}:{h}"
 
 
 def lsh_pairs_map_batches(
-    batch, k=128, b=32, max_bucket_size=2000, max_pairs_per_bucket=2000
-):
+    batch: dict[str, Any],
+    *,
+    k: int,
+    b: int,
+    max_bucket_size: int,
+    max_pairs_per_bucket: int,
+) -> dict[str, list[Any]]:
     assert k % b == 0
+
     ids = batch["id"]
     sigs = batch["sig"]
     ok = batch.get("sig_ok", [True] * len(ids))
 
     r = k // b
-    buckets = {}
+    buckets: dict[str, list[Any]] = {}
 
     for _id, sig, good in zip(ids, sigs, ok):
-        if not good:
+        if not good or sig is None:
             continue
-        if sig is None:
-            continue
-        # handle list/tuple/np.ndarray uniformly
+
         try:
             sig_len = len(sig)
         except Exception:
             continue
+
         if sig_len != k:
             continue
 
@@ -51,9 +60,12 @@ def lsh_pairs_map_batches(
             key = band_key(sig, band_idx, r)
             buckets.setdefault(key, []).append(_id)
 
-    out_id1, out_id2 = [], []
-    for bucket_ids in buckets.values():
+    out_id1: list[Any] = []
+    out_id2: list[Any] = []
+
+    for key, bucket_ids in buckets.items():
         bucket_ids = sorted(set(bucket_ids))
+
         if len(bucket_ids) < 2 or len(bucket_ids) > max_bucket_size:
             continue
 
@@ -68,54 +80,27 @@ def lsh_pairs_map_batches(
             pair_count += 1
             if pair_count >= max_pairs_per_bucket:
                 break
+
     return {"id1": out_id1, "id2": out_id2}
 
 
-def run_stage_lsh(cfg, stage_paths: dict[str, str], ds_minihash=None):
-    """
-    Produces candidate pairs (id1, id2) from minhash signatures.
-    Writes to stage_paths["lsh"] which maps to 03_pairs/.
-    """
-    if ds_minihash is None:
-        ds_minihash = ray.data.read_parquet(stage_paths["minhash"])
-        if getattr(cfg.run, "debug", False):
-            ds_minihash = ds_minihash.limit(getattr(cfg.run, "debug_max_rows", 2000))
-    ds_minihash = ds_minihash.filter(lambda r: r.get("sig_ok", False))
+def apply_pairs(ds, lsh_cfg: LSHConfig):
+    batch_fn = partial(
+        lsh_pairs_map_batches,
+        k=lsh_cfg.k,
+        b=lsh_cfg.b,
+        max_bucket_size=lsh_cfg.max_bucket_size,
+        max_pairs_per_bucket=lsh_cfg.max_pairs_per_bucket,
+    )
 
-    def lsh_pairs_map_batches_safe(batch, k, b, max_bucket_size, max_pairs_per_bucket):
-        try:
-            return lsh_pairs_map_batches(
-                batch,
-                k=k,
-                b=b,
-                max_bucket_size=max_bucket_size,
-                max_pairs_per_bucket=max_pairs_per_bucket,
-            )
-        except Exception as e:
-            print("LSH UDF error:", type(e).__name__, e)
-            return {"id1": [], "id2": []}
-
-    pairs_ds = (
-        ds_minihash.select_columns(["id", "sig", "sig_ok"])
+    return (
+        ds.select_columns(["id", "sig", "sig_ok"])
         .map_batches(
-            lsh_pairs_map_batches_safe,
+            batch_fn,
             batch_format="default",
-            batch_size=cfg.lsh.batch_size,
-            fn_kwargs={
-                "k": cfg.lsh.k,
-                "b": cfg.lsh.b,
-                "max_bucket_size": cfg.lsh.max_bucket_size,
-                "max_pairs_per_bucket": cfg.lsh.max_pairs_per_bucket,
-            },
+            batch_size=lsh_cfg.batch_size,
         )
-        # remove duplicates across batches
         .groupby(["id1", "id2"])
         .count()
         .drop_columns(["count()"])
     )
-
-    out_dir = stage_paths["pairs"]
-    pairs_ds.write_parquet(out_dir)
-    print("wrote pairs:", out_dir, "| rows:", pairs_ds.count())
-
-    return pairs_ds

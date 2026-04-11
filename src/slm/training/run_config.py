@@ -58,15 +58,56 @@ class TrainerConfig:
         if self.num_sanity_val_steps < 0:
             raise ValueError("num_sanity_val_steps must be >= 0")
 
+
 @dataclass
 class DataLoaderConfig:
-    train_bin_path: str = "artifacts/tokenizer/latest/splits/train.bin"
+    # --------------------------------------------------
+    # mode switch
+    # --------------------------------------------------
+    use_online_tokenization: bool = False
+
+    # --------------------------------------------------
+    # pretokenized / bin-loader mode
+    # --------------------------------------------------
+    train_bin_path: Optional[str] = "artifacts/tokenizer/latest/splits/train.bin"
     val_bin_path: Optional[str] = "artifacts/tokenizer/latest/splits/val.bin"
 
     seq_len: int = 1024
-    batch_size: int = 8
-
     stride: Optional[int] = None   # None -> use seq_len
+
+    # --------------------------------------------------
+    # raw-text / online-tokenization mode
+    # --------------------------------------------------
+    source_type: str = "huggingface"
+    dataset_name: Optional[str] = None
+    dataset_config_name: Optional[str] = None
+
+    train_split_name: str = "train"
+    val_split_name: Optional[str] = None
+    test_split_name: Optional[str] = None
+
+    text_fields: list[str] = field(default_factory=lambda: ["text"])
+
+    cache_dir: Optional[str] = None
+    streaming: bool = False
+
+    seed: int = 42
+    shuffle: bool = True
+    shuffle_buffer_size: int = 10_000
+
+    max_train_samples: Optional[int] = None
+    max_val_samples: Optional[int] = None
+    max_test_samples: Optional[int] = None
+
+    smoke_test: bool = False
+
+    # for local json.gz / dolma-style sources
+    data_files_glob: Optional[str] = None
+
+    # --------------------------------------------------
+    # dataloader behavior
+    # --------------------------------------------------
+    batch_size: int = 8
     shuffle_train: bool = True
 
     num_workers: int = 0
