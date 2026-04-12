@@ -55,6 +55,8 @@ trainer:
 
   train_log_every: 100
   eval_every: 1000
+  
+  save_checkpoints: false
   checkpoint_every: 1000
 
   max_eval_batches: 50

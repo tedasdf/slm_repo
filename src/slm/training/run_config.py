@@ -31,7 +31,9 @@ class TrainerConfig:
 
     train_log_every: int = 100
     eval_every: int = 1_000
-    checkpoint_every: int = 1_000
+
+    save_checkpoints: bool = True
+    checkpoint_every: Optional[int] = 1000
 
     max_eval_batches: Optional[int] = None
 
