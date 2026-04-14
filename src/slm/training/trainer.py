@@ -415,7 +415,7 @@ class Trainer:
                             self.callbacks.on_step_end(self, eval_outputs)
 
                         if (
-                            self.config.checkpoint_every is not None
+                            self.config.save_checkpoints == True
                             and self.state.step % self.config.checkpoint_every == 0
                         ):
                             ckpt_path = Path("artifacts/checkpoints") / f"step_{self.state.step}.pt"
