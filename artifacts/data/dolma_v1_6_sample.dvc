@@ -1,0 +1,6 @@
+outs:
+- md5: 3f16782342c9baf1eda0092076aa0713.dir
+  size: 16430279784
+  nfiles: 103
+  hash: md5
+  path: dolma_v1_6_sample
