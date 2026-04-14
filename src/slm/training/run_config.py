@@ -3,7 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal, Optional
 
-from ..data.config import DatasetConfig, TokenizerConfig
+
+from ..data.config import DatasetConfig, TokenizerConfig, DataLoaderConfig
 from ..model import ModelConfig
 
 
@@ -66,25 +67,6 @@ class TrainerConfig:
             raise ValueError("max_eval_batches must be > 0 when provided")
         if self.num_sanity_val_steps < 0:
             raise ValueError("num_sanity_val_steps must be >= 0")
-
-@dataclass
-class DataLoaderConfig:
-    use_online_tokenization: bool = False
-
-    # pretokenized mode
-    train_bin_path: Optional[str] = "artifacts/tokenizer/latest/splits/train.bin"
-    val_bin_path: Optional[str] = "artifacts/tokenizer/latest/splits/val.bin"
-
-    seq_len: int = 1024
-    stride: Optional[int] = None
-
-    # loader behavior
-    batch_size: int = 8
-    shuffle_train: bool = True
-
-    num_workers: int = 0
-    pin_memory: bool = True
-    drop_last: bool = True
 
 
 @dataclass

@@ -6,8 +6,7 @@ from typing import Any
 import torch
 import torch.nn as nn
 
-from .lm_loader import build_token_dataloaders
-from .text_loader import build_text_dataloaders
+from src.slm.data.loaders.factory import build_dataloaders
 from src.slm.data.tokenizer import BPETokenizer
 from src.slm.model import ModelConfig, TransformerLM
 from .logging import PrintMetricsCallback, WandBCallback
@@ -83,13 +82,7 @@ def build_scheduler(
     )
 
 
-def build_dataloaders(run_cfg: Any):
-    use_online_tokenization = getattr(run_cfg.data, "use_online_tokenization", False)
 
-    if use_online_tokenization:
-        return build_text_dataloaders(run_cfg.dataset, run_cfg.data)
-
-    return build_token_dataloaders(run_cfg.data)
 
 def build_tokenizer(tokenizer_cfg: Any | None) -> BPETokenizer | None:
     if tokenizer_cfg is None:
