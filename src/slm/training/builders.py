@@ -167,7 +167,7 @@ def assemble_training_components(
 ) -> dict[str, Any]:
     model = build_model(run_cfg.model)
 
-    train_loader, val_loader = build_data_loaders(
+    train_loader, val_loader = build_dataloaders(
         loader_cfg=run_cfg.data,
         rank=rank,
         world_size=world_size,
