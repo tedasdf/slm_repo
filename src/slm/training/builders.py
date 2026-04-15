@@ -6,9 +6,7 @@ from typing import Any
 import torch
 import torch.nn as nn
 
-from src.slm.data.loaders.factory import build_dataloaders
-from src.slm.data.loaders.text_loader import build_text_dataloaders
-from src.slm.data.loaders.token_loader import build_token_dataloaders
+from src.slm.data.loaders.factory import build_dataloaders as build_data_loaders
 from src.slm.data.tokenizer import BPETokenizer
 from src.slm.model import ModelConfig, TransformerLM
 from .logging import PrintMetricsCallback, WandBCallback
@@ -84,32 +82,6 @@ def build_scheduler(
     )
 
 
-def build_dataloaders(
-    run_cfg: Any,
-    *,
-    rank: int = 0,
-    world_size: int = 1,
-    is_distributed: bool = False,
-):
-    use_online_tokenization = getattr(run_cfg.data, "use_online_tokenization", False)
-
-    if use_online_tokenization:
-        return build_text_dataloaders(
-            run_cfg.dataset,
-            run_cfg.data,
-            rank=rank,
-            world_size=world_size,
-            is_distributed=is_distributed,
-        )
-
-    return build_token_dataloaders(
-        run_cfg.data,
-        rank=rank,
-        world_size=world_size,
-        is_distributed=is_distributed,
-    )
-
-
 def build_tokenizer(tokenizer_cfg: Any | None) -> BPETokenizer | None:
     if tokenizer_cfg is None:
         return None
@@ -162,21 +134,10 @@ def assemble_training_components(
     is_distributed: bool = False,
     is_main: bool = True,
 ) -> dict[str, Any]:
-    """
-    Expects run_cfg to contain at least:
-      - model
-      - optimizer
-      - trainer
-      - data
-    and optionally:
-      - scheduler
-      - logging
-      - tokenizer
-    """
     model = build_model(run_cfg.model)
 
-    train_loader, val_loader = build_dataloaders(
-        run_cfg,
+    train_loader, val_loader = build_data_loaders(
+        loader_cfg=run_cfg.data,
         rank=rank,
         world_size=world_size,
         is_distributed=is_distributed,
@@ -204,10 +165,6 @@ def assemble_training_components(
 
 
 def build_trainer(run_cfg: Any, extra_callbacks: list[Any] | None = None) -> Trainer:
-    """
-    Single-process convenience path.
-    For DDP, use main.py to place model on device, wrap DDP, then build optimizer/scheduler.
-    """
     parts = assemble_training_components(run_cfg)
 
     model = parts["model"]
