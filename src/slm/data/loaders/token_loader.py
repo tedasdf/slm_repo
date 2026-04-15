@@ -8,7 +8,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 from ..config import DataLoaderConfig
-
+from torch.utils.data.distributed import DistributedSampler
 
 def infer_token_dtype(bin_path: str | Path) -> np.dtype:
     """
@@ -70,9 +70,12 @@ class TokenBlockDataset(Dataset):
             "targets": targets,
         }
 
-
-def _build_token_torch_dataloaders(
+def build_token_dataloaders(
     data_cfg: DataLoaderConfig,
+    *,
+    rank: int = 0,
+    world_size: int = 1,
+    is_distributed: bool = False,
 ) -> tuple[DataLoader, DataLoader | None]:
     train_dataset = TokenBlockDataset(
         bin_path=data_cfg.train_bin_path,
@@ -80,10 +83,21 @@ def _build_token_torch_dataloaders(
         stride=data_cfg.stride,
     )
 
+    train_sampler = None
+    if is_distributed:
+        train_sampler = DistributedSampler(
+            train_dataset,
+            num_replicas=world_size,
+            rank=rank,
+            shuffle=data_cfg.shuffle_train,
+            drop_last=data_cfg.drop_last,
+        )
+
     train_loader = DataLoader(
         train_dataset,
         batch_size=data_cfg.batch_size,
-        shuffle=data_cfg.shuffle_train,
+        shuffle=(data_cfg.shuffle_train and train_sampler is None),
+        sampler=train_sampler,
         num_workers=data_cfg.num_workers,
         pin_memory=data_cfg.pin_memory,
         drop_last=data_cfg.drop_last,
@@ -97,10 +111,21 @@ def _build_token_torch_dataloaders(
             stride=data_cfg.seq_len,
         )
 
+        val_sampler = None
+        if is_distributed:
+            val_sampler = DistributedSampler(
+                val_dataset,
+                num_replicas=world_size,
+                rank=rank,
+                shuffle=False,
+                drop_last=False,
+            )
+
         val_loader = DataLoader(
             val_dataset,
             batch_size=data_cfg.batch_size,
             shuffle=False,
+            sampler=val_sampler,
             num_workers=data_cfg.num_workers,
             pin_memory=data_cfg.pin_memory,
             drop_last=False,

@@ -11,14 +11,11 @@ from ..model import ModelConfig
 PrecisionType = Literal["fp32", "fp16", "bf16"]
 DeviceType = Literal["cpu", "cuda"]
 
-
 @dataclass
 class TrainerConfig:
     device: str = "cuda"
     precision: str = "bf16"
 
-    world_size: int = 1
-    
     train_tokenizer_before_fit: bool = False
     target_train_tokens: Optional[int] = None
     text_key: str = "text"
@@ -47,7 +44,6 @@ class TrainerConfig:
 
     num_sanity_val_steps: int = 0
 
-
     def __post_init__(self) -> None:
         if self.max_steps <= 0:
             raise ValueError("max_steps must be > 0")
@@ -61,8 +57,8 @@ class TrainerConfig:
             raise ValueError("train_log_every must be > 0")
         if self.eval_every <= 0:
             raise ValueError("eval_every must be > 0")
-        if self.checkpoint_every <= 0:
-            raise ValueError("checkpoint_every must be > 0")
+        if self.checkpoint_every is not None and self.checkpoint_every <= 0:
+            raise ValueError("checkpoint_every must be > 0 when provided")
         if self.max_eval_batches is not None and self.max_eval_batches <= 0:
             raise ValueError("max_eval_batches must be > 0 when provided")
         if self.num_sanity_val_steps < 0:

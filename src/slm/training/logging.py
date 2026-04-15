@@ -25,6 +25,8 @@ class PrintMetricsCallback(Callback):
         self.prefix = prefix
 
     def on_step_end(self, trainer: Any, step_outputs: Optional[dict[str, Any]] = None) -> None:
+        if not getattr(trainer, "is_main", True):
+            return
         state = trainer.state
         extra = state.extra
 
@@ -47,6 +49,8 @@ class PrintMetricsCallback(Callback):
         print(" | ".join(parts))
 
     def on_eval_end(self, trainer: Any, eval_outputs: Optional[dict[str, Any]] = None) -> None:
+        if not getattr(trainer, "is_main", True):
+            return
         eval_outputs = eval_outputs or {}
         val_loss = _to_float(eval_outputs.get("val_loss"))
         is_best = bool(eval_outputs.get("is_best", False))
@@ -59,6 +63,8 @@ class PrintMetricsCallback(Callback):
         print(" | ".join(parts))
 
     def on_exception(self, trainer: Any, exc: BaseException) -> None:
+        if not getattr(trainer, "is_main", True):
+            return
         print(f"[error] step={trainer.state.step} | {type(exc).__name__}: {exc}")
 
 
@@ -81,7 +87,7 @@ class WandBCallback(Callback):
         self._run = None
 
     def on_run_start(self, trainer: Any) -> None:
-        if not self.enabled:
+        if not self.enabled or not getattr(trainer, "is_main", True):
             return
 
         import wandb
@@ -95,7 +101,7 @@ class WandBCallback(Callback):
         )
 
     def on_step_end(self, trainer: Any, step_outputs: Optional[dict[str, Any]] = None) -> None:
-        if not self.enabled or self._wandb is None:
+        if not self.enabled or self._wandb is None or not getattr(trainer, "is_main", True):
             return
 
         state = trainer.state
@@ -134,7 +140,7 @@ class WandBCallback(Callback):
         self._wandb.log(payload, step=state.step)
 
     def on_eval_end(self, trainer: Any, eval_outputs: Optional[dict[str, Any]] = None) -> None:
-        if not self.enabled or self._wandb is None:
+        if not self.enabled or self._wandb is None or not getattr(trainer, "is_main", True):
             return
 
         state = trainer.state
@@ -154,7 +160,7 @@ class WandBCallback(Callback):
         self._wandb.log(payload, step=state.step)
 
     def on_run_end(self, trainer: Any) -> None:
-        if not self.enabled or self._run is None:
+        if not self.enabled or self._run is None or not getattr(trainer, "is_main", True):
             return
 
         summary = {}
@@ -176,7 +182,7 @@ class WandBCallback(Callback):
         self._wandb = None
 
     def on_exception(self, trainer: Any, exc: BaseException) -> None:
-        if not self.enabled or self._run is None:
+        if not self.enabled or self._run is None or not getattr(trainer, "is_main", True):
             return
         self._run.summary["failed"] = True
         self._run.summary["error_type"] = type(exc).__name__

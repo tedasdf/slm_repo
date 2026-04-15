@@ -82,6 +82,30 @@ def build_scheduler(
     )
 
 
+def build_dataloaders(
+    run_cfg: Any,
+    *,
+    rank: int = 0,
+    world_size: int = 1,
+    is_distributed: bool = False,
+):
+    use_online_tokenization = getattr(run_cfg.data, "use_online_tokenization", False)
+
+    if use_online_tokenization:
+        return build_text_dataloaders(
+            run_cfg.dataset,
+            run_cfg.data,
+            rank=rank,
+            world_size=world_size,
+            is_distributed=is_distributed,
+        )
+
+    return build_token_dataloaders(
+        run_cfg.data,
+        rank=rank,
+        world_size=world_size,
+        is_distributed=is_distributed,
+    )
 
 
 def build_tokenizer(tokenizer_cfg: Any | None) -> BPETokenizer | None:
@@ -101,10 +125,14 @@ def build_tokenizer(tokenizer_cfg: Any | None) -> BPETokenizer | None:
     return BPETokenizer.load(tokenizer_path)
 
 
-def build_callbacks(logging_cfg: Any | None) -> list[Any]:
+def build_callbacks(
+    logging_cfg: Any | None,
+    *,
+    enabled: bool = True,
+) -> list[Any]:
     callbacks: list[Any] = []
 
-    if logging_cfg is None:
+    if logging_cfg is None or not enabled:
         return callbacks
 
     if getattr(logging_cfg, "use_print_callback", False):
@@ -117,14 +145,21 @@ def build_callbacks(logging_cfg: Any | None) -> list[Any]:
                 name=getattr(logging_cfg, "wandb_run_name", None),
                 config=getattr(logging_cfg, "wandb_config", None),
                 tags=getattr(logging_cfg, "wandb_tags", None),
-                enabled=True,
+                enabled=enabled,
             )
         )
 
     return callbacks
 
 
-def assemble_training_components(run_cfg: Any) -> dict[str, Any]:
+def assemble_training_components(
+    run_cfg: Any,
+    *,
+    rank: int = 0,
+    world_size: int = 1,
+    is_distributed: bool = False,
+    is_main: bool = True,
+) -> dict[str, Any]:
     """
     Expects run_cfg to contain at least:
       - model
@@ -137,18 +172,26 @@ def assemble_training_components(run_cfg: Any) -> dict[str, Any]:
       - tokenizer
     """
     model = build_model(run_cfg.model)
-    optimizer = build_optimizer(model, run_cfg.optimizer)
-    scheduler = build_scheduler(optimizer, getattr(run_cfg, "scheduler", None))
-    train_loader, val_loader = build_dataloaders(loader_cfg=run_cfg.data)
-    callbacks = build_callbacks(getattr(run_cfg, "logging", None))
+
+    train_loader, val_loader = build_dataloaders(
+        run_cfg,
+        rank=rank,
+        world_size=world_size,
+        is_distributed=is_distributed,
+    )
+
+    callbacks = build_callbacks(
+        getattr(run_cfg, "logging", None),
+        enabled=is_main,
+    )
 
     tokenizer_cfg = getattr(run_cfg, "tokenizer", None)
     tokenizer = build_tokenizer(tokenizer_cfg)
 
     return {
         "model": model,
-        "optimizer": optimizer,
-        "scheduler": scheduler,
+        "optimizer_cfg": run_cfg.optimizer,
+        "scheduler_cfg": getattr(run_cfg, "scheduler", None),
         "train_loader": train_loader,
         "val_loader": val_loader,
         "callbacks": callbacks,
@@ -159,16 +202,34 @@ def assemble_training_components(run_cfg: Any) -> dict[str, Any]:
 
 
 def build_trainer(run_cfg: Any, extra_callbacks: list[Any] | None = None) -> Trainer:
+    """
+    Single-process convenience path.
+    For DDP, use main.py to place model on device, wrap DDP, then build optimizer/scheduler.
+    """
     parts = assemble_training_components(run_cfg)
+
+    model = parts["model"]
+    device = torch.device(
+        "cuda"
+        if run_cfg.trainer.device == "cuda" and torch.cuda.is_available()
+        else "cpu"
+    )
+    model = model.to(device)
+
+    if run_cfg.trainer.compile_model and hasattr(torch, "compile"):
+        model = torch.compile(model)
+
+    optimizer = build_optimizer(model, parts["optimizer_cfg"])
+    scheduler = build_scheduler(optimizer, parts["scheduler_cfg"])
 
     callbacks = list(parts["callbacks"])
     if extra_callbacks is not None:
         callbacks.extend(extra_callbacks)
 
     trainer = Trainer(
-        model=parts["model"],
-        optimizer=parts["optimizer"],
-        scheduler=parts["scheduler"],
+        model=model,
+        optimizer=optimizer,
+        scheduler=scheduler,
         train_loader=parts["train_loader"],
         val_loader=parts["val_loader"],
         config=parts["trainer_cfg"],

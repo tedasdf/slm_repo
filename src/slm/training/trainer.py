@@ -9,6 +9,8 @@ from typing import Any
 import torch
 import torch.nn as nn
 
+from .distributed import all_reduce_sum, barrier
+
 from .callbacks import CallbackList
 from .run_config import TrainerConfig
 from .state import TrainState
@@ -40,6 +42,7 @@ class Trainer:
         scheduler: Any | None = None,
         callbacks: list[Any] | None = None,
         loss_fn: Any | None = None,
+        dist_env: Any | None = None,
     ) -> None:
         self.tokenizer = tokenizer
         self.tokenizer_cfg = tokenizer_cfg
@@ -54,18 +57,39 @@ class Trainer:
         self.callbacks = CallbackList(callbacks or [])
         self.state = TrainState()
 
-        self.device = torch.device(
-            "cuda" if config.device == "cuda" and torch.cuda.is_available() else "cpu"
+        if dist_env is None:
+            self.rank = 0
+            self.local_rank = 0
+            self.world_size = 1
+            self.is_distributed = False
+            self.is_main = True
+            self.device = torch.device(
+                "cuda" if config.device == "cuda" and torch.cuda.is_available() else "cpu"
+            )
+        else:
+            self.rank = dist_env.rank
+            self.local_rank = dist_env.local_rank
+            self.world_size = dist_env.world_size
+            self.is_distributed = dist_env.is_distributed
+            self.is_main = dist_env.is_main
+            self.device = dist_env.device
+
+        self.grad_scaler = torch.amp.GradScaler(
+            "cuda",
+            enabled=self._use_grad_scaler(),
         )
-        self.model.to(self.device)
 
-        if self.config.compile_model and hasattr(torch, "compile"):
-            self.model = torch.compile(self.model)
-
-        self.grad_scaler = torch.amp.GradScaler("cuda", enabled=self._use_grad_scaler())
+        self.state.extra["distributed/rank"] = self.rank
+        self.state.extra["distributed/local_rank"] = self.local_rank
+        self.state.extra["distributed/world_size"] = self.world_size
         
     @classmethod
-    def from_components(cls, components: dict[str, Any]) -> "Trainer":
+    def from_components(
+        cls,
+        components: dict[str, Any],
+        *,
+        dist_env: Any | None = None,
+    ) -> "Trainer":
         required = [
             "model",
             "optimizer",
@@ -89,6 +113,7 @@ class Trainer:
             callbacks=components["callbacks"],
             tokenizer=components.get("tokenizer"),
             tokenizer_cfg=components.get("tokenizer_cfg"),
+            dist_env=dist_env,
         )
 
     def _use_autocast(self) -> bool:
@@ -187,18 +212,7 @@ class Trainer:
                 "train_tokenizer_before_fit=True but tokenizer_cfg was not provided."
             )
 
-        # self.tokenizer = fit_tokenizer_from_loader(
-        #     self.train_loader,
-        #     vocab_size=self.tokenizer_cfg.vocab_size,
-        #     special_tokens=self.tokenizer_cfg.special_tokens,
-        #     unk_token=self.tokenizer_cfg.unk_token,
-        #     min_frequency=self.tokenizer_cfg.min_frequency,
-        #     text_key=getattr(self.config, "text_key", "text"),
-        #     max_train_texts=getattr(self.tokenizer_cfg, "tokenizer_train_samples", None),
-        # )
-
-        self.tokenizer = fit_or_load_tokenizer_from_loader(
-            self.train_loader,
+        common_kwargs = dict(
             vocab_size=self.tokenizer_cfg.vocab_size,
             special_tokens=self.tokenizer_cfg.special_tokens,
             unk_token=self.tokenizer_cfg.unk_token,
@@ -207,29 +221,25 @@ class Trainer:
             max_train_texts=getattr(self.tokenizer_cfg, "tokenizer_train_samples", None),
             tokenizer_path=getattr(self.tokenizer_cfg, "tokenizer_path", None),
             reuse_existing=getattr(self.tokenizer_cfg, "reuse_existing", True),
+        )
+
+        if self.is_distributed and not self.is_main:
+            barrier()
+            self.tokenizer = fit_or_load_tokenizer_from_loader(
+                self.train_loader,
+                **common_kwargs,
+                save_if_trained=False,
+            )
+            return
+
+        self.tokenizer = fit_or_load_tokenizer_from_loader(
+            self.train_loader,
+            **common_kwargs,
             save_if_trained=True,
         )
-    def _tokenize_batch_if_needed(self, batch: Any) -> Any:
-        out = maybe_tokenize_batch(
-            batch,
-            self.tokenizer,
-            text_key=getattr(self.config, "text_key", "text"),
-            eos_token=getattr(self.tokenizer_cfg, "eos_token", None)
-            if self.tokenizer_cfg is not None else None,
-            pad_token=getattr(self.tokenizer_cfg, "pad_token", None)
-            if self.tokenizer_cfg is not None else None,
-            append_eos=getattr(self.tokenizer_cfg, "append_eos", True)
-            if self.tokenizer_cfg is not None else True,
-            max_seq_len=getattr(self.config, "max_seq_len", None),
-        )
 
-        if out is batch and isinstance(batch, dict) and getattr(self.config, "text_key", "text") in batch:
-            raise ValueError(
-                "Received raw-text batch but no tokenizer is available. "
-                "Provide a tokenizer or enable tokenizer fitting before training."
-            )
-
-        return out
+        if self.is_distributed:
+            barrier()
 
 
     def train_step(self, batch: Any) -> dict[str, Any]:
@@ -245,19 +255,25 @@ class Trainer:
 
         self.state.last_train_loss = float(loss.detach().item())
 
-        if torch.is_tensor(targets):
-            tokens_this_batch = int((targets != -100).sum().item())
-            self.state.train_tokens_seen += tokens_this_batch
+        tokens_this_batch = 0
+        samples_this_batch = 0
 
-            batch_size = int(targets.size(0)) if targets.ndim > 0 else 0
-            self.state.train_samples_seen += batch_size
-        else:
-            tokens_this_batch = 0
+        if torch.is_tensor(targets):
+            local_tokens = int((targets != -100).sum().item())
+            local_batch_size = int(targets.size(0)) if targets.ndim > 0 else 0
+
+            tokens_this_batch = int(all_reduce_sum(local_tokens, self.device))
+            samples_this_batch = int(all_reduce_sum(local_batch_size, self.device))
+
+            self.state.train_tokens_seen += tokens_this_batch
+            self.state.train_samples_seen += samples_this_batch
 
         step_outputs: dict[str, Any] = {
             "loss": self.state.last_train_loss,
             "tokens_this_batch": tokens_this_batch,
+            "samples_this_batch": samples_this_batch,
             "train_tokens_seen": self.state.train_tokens_seen,
+            "train_samples_seen": self.state.train_samples_seen,
         }
 
         return step_outputs
@@ -306,8 +322,8 @@ class Trainer:
         self.model.eval()
         self.callbacks.on_eval_start(self)
 
-        total_loss = 0.0
-        total_batches = 0
+        local_loss_sum = 0.0
+        local_batches = 0
 
         try:
             for batch_idx, batch in enumerate(self.val_loader):
@@ -318,10 +334,13 @@ class Trainer:
                     break
 
                 loss, _, _ = self._compute_loss(batch)
-                total_loss += float(loss.detach().item())
-                total_batches += 1
+                local_loss_sum += float(loss.detach().item())
+                local_batches += 1
 
-            val_loss = total_loss / max(total_batches, 1)
+            total_loss_sum = float(all_reduce_sum(local_loss_sum, self.device))
+            total_batches = int(all_reduce_sum(local_batches, self.device))
+
+            val_loss = total_loss_sum / max(total_batches, 1)
             self.state.last_val_loss = val_loss
             is_best = self.state.update_best_val(val_loss)
 
@@ -338,11 +357,16 @@ class Trainer:
             self.model.train()
     
     def save_checkpoint(self, path: str | Path) -> None:
+        if not self.is_main:
+            return
+
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
 
+        raw_model = self.model.module if hasattr(self.model, "module") else self.model
+
         ckpt = {
-            "model": self.model.state_dict(),
+            "model": raw_model.state_dict(),
             "optimizer": self.optimizer.state_dict(),
             "scheduler": self.scheduler.state_dict() if self.scheduler is not None else None,
             "state": {
@@ -384,6 +408,10 @@ class Trainer:
                 self.state.epoch += 1
                 self.callbacks.on_epoch_start(self)
 
+                sampler = getattr(self.train_loader, "sampler", None)
+                if sampler is not None and hasattr(sampler, "set_epoch"):
+                    sampler.set_epoch(self.state.epoch)
+
                 for batch_idx, batch in enumerate(self.train_loader):
                     if self.state.step >= self.config.max_steps or self.state.should_stop:
                         break
@@ -396,7 +424,11 @@ class Trainer:
 
                         self.state.step += 1
 
-                        step_time = time.time() - self.state.started_at if self.state.started_at else None
+                        step_time = (
+                            time.time() - self.state.started_at
+                            if self.state.started_at
+                            else None
+                        )
                         self.state.extra["timing/elapsed_since_start_sec"] = step_time
 
                         target_train_tokens = getattr(self.config, "target_train_tokens", None)
@@ -415,7 +447,7 @@ class Trainer:
                             self.callbacks.on_step_end(self, eval_outputs)
 
                         if (
-                            self.config.save_checkpoints == True
+                            self.config.save_checkpoints is True
                             and self.state.step % self.config.checkpoint_every == 0
                         ):
                             ckpt_path = Path("artifacts/checkpoints") / f"step_{self.state.step}.pt"
