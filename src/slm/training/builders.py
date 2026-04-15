@@ -6,12 +6,14 @@ from typing import Any
 import torch
 import torch.nn as nn
 
-from src.slm.data.loaders.factory import build_dataloaders as build_data_loaders
 from src.slm.data.tokenizer import BPETokenizer
 from src.slm.model import ModelConfig, TransformerLM
 from .logging import PrintMetricsCallback, WandBCallback
 from .trainer import Trainer
 
+from src.slm.data.config import DataLoaderConfig
+from src.slm.data.loaders.text_loader import build_text_dataloaders
+from src.slm.data.loaders.token_loader import build_token_dataloaders
 
 def build_model(model_cfg: ModelConfig) -> nn.Module:
     from torch.backends.cuda import (
@@ -98,6 +100,35 @@ def build_tokenizer(tokenizer_cfg: Any | None) -> BPETokenizer | None:
 
     return BPETokenizer.load(tokenizer_path)
 
+def build_dataloaders(
+    *,
+    loader_cfg: DataLoaderConfig,
+    rank: int = 0,
+    world_size: int = 1,
+    is_distributed: bool = False,
+):
+    mode = str(getattr(loader_cfg, "mode", "tokens")).strip().lower()
+
+    if mode in {"text", "raw_text"}:
+        return build_text_dataloaders(
+            loader_cfg,
+            rank=rank,
+            world_size=world_size,
+            is_distributed=is_distributed,
+        )
+
+    if mode in {"tokens", "token", "token_blocks"}:
+        return build_token_dataloaders(
+            loader_cfg,
+            rank=rank,
+            world_size=world_size,
+            is_distributed=is_distributed,
+        )
+
+    raise ValueError(
+        f"Unsupported loader mode={mode!r}. "
+        "Use one of: 'text', 'raw_text', 'tokens', 'token_blocks'."
+    )
 
 def build_callbacks(
     logging_cfg: Any | None,
