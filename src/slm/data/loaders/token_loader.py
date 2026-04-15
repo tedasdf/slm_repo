@@ -6,9 +6,10 @@ from typing import Optional
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
+from torch.utils.data.distributed import DistributedSampler
 
 from ..config import DataLoaderConfig
-from torch.utils.data.distributed import DistributedSampler
+
 
 def infer_token_dtype(bin_path: str | Path) -> np.dtype:
     """
@@ -70,7 +71,8 @@ class TokenBlockDataset(Dataset):
             "targets": targets,
         }
 
-def build_token_dataloaders(
+
+def _build_token_torch_dataloaders(
     data_cfg: DataLoaderConfig,
     *,
     rank: int = 0,
@@ -136,25 +138,43 @@ def build_token_dataloaders(
 
 def _build_token_ray_dataloaders(
     data_cfg: DataLoaderConfig,
+    *,
+    rank: int = 0,
+    world_size: int = 1,
+    is_distributed: bool = False,
 ):
     raise NotImplementedError(
         "Ray token loader is not implemented yet. "
         "Your current token-block memmap path is already efficient for local pretokenized data. "
-        "Start with backend='ray' on the text loader first, then add a token Ray path later if you "
+        "Start with backend='torch' on the text loader first, then add a token Ray path later if you "
         "move token batches into a Ray-friendly store like Parquet on S3."
     )
 
 
 def build_token_dataloaders(
     data_cfg: DataLoaderConfig,
+    *,
+    rank: int = 0,
+    world_size: int = 1,
+    is_distributed: bool = False,
 ):
     backend = str(getattr(data_cfg, "backend", "torch")).strip().lower()
 
     if backend == "torch":
-        return _build_token_torch_dataloaders(data_cfg)
+        return _build_token_torch_dataloaders(
+            data_cfg,
+            rank=rank,
+            world_size=world_size,
+            is_distributed=is_distributed,
+        )
 
     if backend == "ray":
-        return _build_token_ray_dataloaders(data_cfg)
+        return _build_token_ray_dataloaders(
+            data_cfg,
+            rank=rank,
+            world_size=world_size,
+            is_distributed=is_distributed,
+        )
 
     raise ValueError(
         f"Unsupported token loader backend={backend!r}. "

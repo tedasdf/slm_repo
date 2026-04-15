@@ -7,6 +7,8 @@ import torch
 import torch.nn as nn
 
 from src.slm.data.loaders.factory import build_dataloaders
+from src.slm.data.loaders.text_loader import build_text_dataloaders
+from src.slm.data.loaders.token_loader import build_token_dataloaders
 from src.slm.data.tokenizer import BPETokenizer
 from src.slm.model import ModelConfig, TransformerLM
 from .logging import PrintMetricsCallback, WandBCallback

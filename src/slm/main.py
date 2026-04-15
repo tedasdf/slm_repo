@@ -1,19 +1,12 @@
-# from __future__ import annotations
+from __future__ import annotations
 
-# import argparse
-# from pathlib import Path
+import argparse
+from pathlib import Path
 
 import torch
 from omegaconf import OmegaConf
 from torch.nn.parallel import DistributedDataParallel as DDP
 
-# from src.slm.experiments.scaling_law import (
-#     ScalingLawExperiment,
-#     ScalingLawExperimentConfig,
-# )
-# from .training.builders import assemble_training_components
-# from .training.run_config import RunConfig
-# from .training.trainer import Trainer
 from src.slm.experiments.scaling_law import (
     ScalingLawExperiment,
     ScalingLawExperimentConfig,
@@ -28,64 +21,64 @@ from .training.run_config import RunConfig
 from .training.trainer import Trainer
 
 
-# def load_config(config_path: str | Path) -> RunConfig:
-#     schema = OmegaConf.structured(RunConfig)
-#     loaded_cfg = OmegaConf.load(str(config_path))
-#     merged = OmegaConf.merge(schema, loaded_cfg)
+def load_config(config_path: str | Path) -> RunConfig:
+    schema = OmegaConf.structured(RunConfig)
+    loaded_cfg = OmegaConf.load(str(config_path))
+    merged = OmegaConf.merge(schema, loaded_cfg)
 
-#     missing = OmegaConf.missing_keys(merged)
-#     if missing:
-#         raise ValueError(f"Missing config fields: {sorted(missing)}")
+    missing = OmegaConf.missing_keys(merged)
+    if missing:
+        raise ValueError(f"Missing config fields: {sorted(missing)}")
 
-#     cfg = OmegaConf.to_object(merged)
-#     if not isinstance(cfg, RunConfig):
-#         raise TypeError(f"Expected RunConfig, got {type(cfg)}")
-#     return cfg
-
-
-# def load_experiment_config(
-#     experiment_path: str | Path,
-# ) -> ScalingLawExperimentConfig:
-#     schema = OmegaConf.structured(ScalingLawExperimentConfig)
-#     loaded_cfg = OmegaConf.load(str(experiment_path))
-#     merged = OmegaConf.merge(schema, loaded_cfg)
-
-#     missing = OmegaConf.missing_keys(merged)
-#     if missing:
-#         raise ValueError(f"Missing experiment config fields: {sorted(missing)}")
-
-#     cfg = OmegaConf.to_object(merged)
-#     if not isinstance(cfg, ScalingLawExperimentConfig):
-#         raise TypeError(
-#             f"Expected ScalingLawExperimentConfig, got {type(cfg)}"
-#         )
-#     return cfg
+    cfg = OmegaConf.to_object(merged)
+    if not isinstance(cfg, RunConfig):
+        raise TypeError(f"Expected RunConfig, got {type(cfg)}")
+    return cfg
 
 
-# def main(
-#     config_path: str,
-#     *,
-#     experiment: bool = False,
-#     experiment_path: str | None = None,
-# ) -> None:
-#     cfg = load_config(config_path)
+def load_experiment_config(
+    experiment_path: str | Path,
+) -> ScalingLawExperimentConfig:
+    schema = OmegaConf.structured(ScalingLawExperimentConfig)
+    loaded_cfg = OmegaConf.load(str(experiment_path))
+    merged = OmegaConf.merge(schema, loaded_cfg)
 
-#     if experiment:
-#         if experiment_path is None:
-#             raise ValueError(
-#                 "--experiment_path is required when --experiment is set"
-#             )
+    missing = OmegaConf.missing_keys(merged)
+    if missing:
+        raise ValueError(f"Missing experiment config fields: {sorted(missing)}")
 
-#         experiment_cfg = load_experiment_config(experiment_path)
+    cfg = OmegaConf.to_object(merged)
+    if not isinstance(cfg, ScalingLawExperimentConfig):
+        raise TypeError(
+            f"Expected ScalingLawExperimentConfig, got {type(cfg)}"
+        )
+    return cfg
 
-#         scaling_experiment = ScalingLawExperiment(
-#             base_cfg=cfg,
-#             experiment_cfg=experiment_cfg,
-#         )
 
-#         sweep_id = scaling_experiment.run()
-#         print(f"sweep_id={sweep_id}")
-#         return
+def main(
+    config_path: str,
+    *,
+    experiment: bool = False,
+    experiment_path: str | None = None,
+) -> None:
+    cfg = load_config(config_path)
+
+    if experiment:
+        if experiment_path is None:
+            raise ValueError(
+                "--experiment_path is required when --experiment is set"
+            )
+
+        experiment_cfg = load_experiment_config(experiment_path)
+
+        scaling_experiment = ScalingLawExperiment(
+            base_cfg=cfg,
+            experiment_cfg=experiment_cfg,
+        )
+
+        sweep_id = scaling_experiment.run()
+        print(f"sweep_id={sweep_id}")
+        return
 
     dist_env = setup_distributed("cuda")
 
@@ -128,6 +121,8 @@ from .training.trainer import Trainer
             print(f"last_train_loss={state.last_train_loss}")
             print(f"elapsed_seconds={state.elapsed_seconds}")
 
+    finally:
+        cleanup_distributed()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -136,7 +131,8 @@ if __name__ == "__main__":
     parser.add_argument("--experiment", action="store_true")
     args = parser.parse_args()
 
-#     main(
-#         config_path=args.config_path,
-#         experiment=args.experiment,
-#         experiment_path=args.experiment_path,
+    main(
+        config_path=args.config_path,
+        experiment=args.experiment,
+        experiment_path=args.experiment_path,
+    )

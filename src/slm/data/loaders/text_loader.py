@@ -109,6 +109,9 @@ class RawTextDataset(IterableDataset):
         max_samples: Optional[int] = None,
         val_fraction: float = 0.0,
         split_seed: int = 42,
+        rank: int = 0,
+        world_size: int = 1,
+        is_distributed: bool = False,
     ) -> None:
         super().__init__()
         self.loader_cfg = loader_cfg
@@ -118,6 +121,9 @@ class RawTextDataset(IterableDataset):
         self.max_samples = max_samples
         self.val_fraction = val_fraction
         self.split_seed = split_seed
+        self.rank = rank
+        self.world_size = world_size
+        self.is_distributed = is_distributed
 
     def _use_synthetic_val_split(self) -> bool:
         return _use_synthetic_val_split(
@@ -136,6 +142,23 @@ class RawTextDataset(IterableDataset):
         )
 
     def __iter__(self) -> Iterator[str]:
+        from torch.utils.data import get_worker_info
+
+        worker_info = get_worker_info()
+        if worker_info is None:
+            worker_id = 0
+            num_workers = 1
+        else:
+            worker_id = worker_info.id
+            num_workers = worker_info.num_workers
+
+        if self.is_distributed:
+            total_shards = self.world_size * num_workers
+            shard_id = self.rank * num_workers + worker_id
+        else:
+            total_shards = num_workers
+            shard_id = worker_id
+
         use_synth_split = self._use_synthetic_val_split()
 
         source_split_name = (
@@ -144,16 +167,14 @@ class RawTextDataset(IterableDataset):
             else self.split_name
         )
 
-        # When synthesizing val, do not cap the raw stream before filtering.
-        source_max_samples = None if use_synth_split else self.max_samples
+        global_sample_idx = 0
 
-        yielded = 0
         for row in iter_examples(
             self.dataset_view,
             split_name=source_split_name,
             seed=getattr(self.loader_cfg, "seed", 42) + self.seed_offset,
             smoke_test=False,
-            max_samples=source_max_samples,
+            max_samples=None,
         ):
             if not self._row_belongs_to_requested_split(row):
                 continue
@@ -162,11 +183,16 @@ class RawTextDataset(IterableDataset):
             if not text:
                 continue
 
-            yield text
-            yielded += 1
-
-            if self.max_samples is not None and yielded >= self.max_samples:
+            if self.max_samples is not None and global_sample_idx >= self.max_samples:
                 break
+
+            current_idx = global_sample_idx
+            global_sample_idx += 1
+
+            if current_idx % total_shards != shard_id:
+                continue
+
+            yield text
 
 
 def collate_text_batch(batch: list[str]) -> dict[str, list[str]]:
@@ -175,6 +201,10 @@ def collate_text_batch(batch: list[str]) -> dict[str, list[str]]:
 
 def _build_text_torch_dataloaders(
     loader_cfg: DataLoaderConfig,
+    *,
+    rank: int = 0,
+    world_size: int = 1,
+    is_distributed: bool = False,
 ) -> tuple[DataLoader, DataLoader | None]:
     val_fraction = float(getattr(loader_cfg, "val_fraction", 0.0))
     split_seed = int(getattr(loader_cfg, "split_seed", 42))
@@ -186,6 +216,9 @@ def _build_text_torch_dataloaders(
         max_samples=getattr(loader_cfg, "max_train_samples", None),
         val_fraction=val_fraction,
         split_seed=split_seed,
+        rank=rank,
+        world_size=world_size,
+        is_distributed=is_distributed,
     )
 
     train_loader = DataLoader(
@@ -213,6 +246,9 @@ def _build_text_torch_dataloaders(
             max_samples=getattr(loader_cfg, "max_val_samples", None),
             val_fraction=val_fraction,
             split_seed=split_seed,
+            rank=rank,
+            world_size=world_size,
+            is_distributed=is_distributed,
         )
 
         val_loader = DataLoader(
@@ -315,7 +351,6 @@ def _build_ray_text_dataset(
 
     return ds
 
-
 class _RayTextBatchLoader:
     def __init__(
         self,
@@ -348,7 +383,16 @@ class _RayTextBatchLoader:
 
 def _build_text_ray_dataloaders(
     loader_cfg: DataLoaderConfig,
+    *,
+    rank: int = 0,
+    world_size: int = 1,
+    is_distributed: bool = False,
 ):
+    if is_distributed:
+        raise NotImplementedError(
+            "Distributed text loading is not implemented for backend='ray' yet. "
+            "Use backend='torch' for now."
+        )
     val_fraction = float(getattr(loader_cfg, "val_fraction", 0.0))
     split_seed = int(getattr(loader_cfg, "split_seed", 42))
     prefetch_batches = int(getattr(loader_cfg, "ray_prefetch_batches", 1))
@@ -393,17 +437,30 @@ def _build_text_ray_dataloaders(
 
     return train_loader, val_loader
 
-
 def build_text_dataloaders(
     loader_cfg: DataLoaderConfig,
+    *,
+    rank: int = 0,
+    world_size: int = 1,
+    is_distributed: bool = False,
 ):
     backend = str(getattr(loader_cfg, "backend", "torch")).strip().lower()
 
     if backend == "torch":
-        return _build_text_torch_dataloaders(loader_cfg)
+        return _build_text_torch_dataloaders(
+            loader_cfg,
+            rank=rank,
+            world_size=world_size,
+            is_distributed=is_distributed,
+        )
 
     if backend == "ray":
-        return _build_text_ray_dataloaders(loader_cfg)
+        return _build_text_ray_dataloaders(
+            loader_cfg,
+            rank=rank,
+            world_size=world_size,
+            is_distributed=is_distributed,
+        )
 
     raise ValueError(
         f"Unsupported text loader backend={backend!r}. "

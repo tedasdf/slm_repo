@@ -45,17 +45,19 @@ logging:
     - "baseline"
     - "runtime-tokenization"
 
+
+
 trainer:
   device: "cuda"
   precision: "bf16"
 
-  world_size: 1
-
-  train_tokenizer_before_fit: true
+  train_tokenizer_before_fit: false
+  
+  target_train_tokens: null
   text_key: "text"
-  max_seq_len: 128
+  max_seq_len: 1024
 
-  max_steps: 2
+  max_steps: 10000
   max_epochs: null
 
   grad_accum_steps: 1
@@ -63,9 +65,11 @@ trainer:
 
   train_log_every: 100
   eval_every: 1000
+
+  save_checkpoints: false
   checkpoint_every: 1000
 
-  max_eval_batches: null
+  max_eval_batches: 50
 
   compile_model: false
   enable_anomaly_detection: false
@@ -75,6 +79,7 @@ trainer:
   metric_mode_for_best: "min"
 
   num_sanity_val_steps: 0
+
 
 # data:
 #   mode: tokens
@@ -92,7 +97,7 @@ trainer:
 data:
   mode: text
   backend: ray
-  source_type: json
+  source_type: parquet
   train_paths: s3://attention-ntp-pipeline-data-2026/datasets/dolma_v1_6_sample/**/*.json.gz
   val_paths: null
   text_fields: ["text"]
@@ -111,6 +116,7 @@ data:
   pin_memory: true
   drop_last: true
   ray_prefetch_batches: 1
+  
   
 # dataset:
 #   source_type: "dolma_local"

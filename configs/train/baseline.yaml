@@ -85,7 +85,7 @@ trainer:
 data:
   mode: text
   backend: ray
-  source_type: json
+  source_type: parquet
   train_paths: s3://attention-ntp-pipeline-data-2026/datasets/dolma_v1_6_sample/**/*.json.gz
   val_paths: null
   text_fields: ["text"]
