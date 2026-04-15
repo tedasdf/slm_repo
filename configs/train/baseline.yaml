@@ -54,7 +54,7 @@ trainer:
 
   train_log_every: 100
   eval_every: 1000
-  
+
   save_checkpoints: false
   checkpoint_every: 1000
 
@@ -69,6 +69,20 @@ trainer:
 
   num_sanity_val_steps: 0
 
+data:
+  mode: tokens
+  backend: torch
+  train_bin_path: artifacts/tokenizer/latest/splits/train.bin
+  val_bin_path: artifacts/tokenizer/latest/splits/val.bin
+  seq_len: 1024
+  batch_size: 8
+  shuffle_train: true
+  num_workers: 0
+  pin_memory: true
+  drop_last: true
+  stride: null
+  ray_prefetch_batches: 1
+  
 dataset:
   source_type: "dolma_local"
   data_files_glob: "./artifacts/data/dolma_v1_6_sample/**/*.json.gz"
@@ -103,18 +117,3 @@ tokenizer:
   tokenizer_path: "artifacts/tokenizer/runtime/tokenizer.json"
   allow_missing_tokenizer: true
 
-data:
-  use_online_tokenization: true
-
-  train_bin_path: null
-  val_bin_path: null
-
-  seq_len: 1024
-  stride: null
-
-  batch_size: 8
-  shuffle_train: true
-
-  num_workers: 0
-  pin_memory: true
-  drop_last: true

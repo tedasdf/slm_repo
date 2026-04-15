@@ -35,3 +35,47 @@ A fully locked experimental scope for the dense baseline stage, including:
 
 for future referecne 
 Stoachstic Lanczos Quadrature methods 
+
+
+
+# TODO
+
+## Training Stability
+- [ ] Add continuous training / resume from checkpoint
+  - [ ] Save periodic checkpoints during training
+  - [ ] Restore model, optimizer, scheduler, scaler, and train state
+  - [ ] Resume cleanly after Slurm interruption or timeout
+  - [ ] Keep both `last` and `best` checkpoints
+
+## Infrastructure
+- [ ] Fix DVC pull / DVC setup on M3
+  - [ ] Ensure packages install into the real `slm_ven` Conda environment
+  - [ ] Install `dvc[s3]` inside the working env
+  - [ ] Verify `dvc remote list`
+  - [ ] Verify `dvc pull`
+  - [ ] Verify S3 auth / credentials on M3
+  - [ ] Clean up old user-site installs after current jobs finish
+
+## Analysis / Diagnostics
+- [ ] Add Hessian analysis tool
+  - [ ] Decide whether to track top eigenvalue, trace, or spectral density approximation
+  - [ ] Make it usable during training or as a post-training diagnostic
+  - [ ] Use it to inspect training stability and curvature
+
+## Scaling Law Workflow
+- [ ] Optimize scaling-law pipeline
+  - [ ] Clean up compute budget → model size → token budget workflow
+  - [ ] Reduce duplicate candidate architectures
+  - [ ] Make sweeps easier to generate and compare
+  - [ ] Improve reporting of theoretical vs actual training setup
+
+## Hyperparameter Tuning
+- [ ] Optimize learning rate, batch size, scheduler, and optimizer
+  - [ ] Tune learning rate range
+  - [ ] Tune effective batch size / gradient accumulation
+  - [ ] Compare scheduler choices
+  - [ ] Tune optimizer settings
+    - [ ] AdamW betas
+    - [ ] epsilon
+    - [ ] weight decay
+  - [ ] Check stability across different model sizes
