@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Literal, Optional
 
 
-from ..data.config import DatasetConfig, TokenizerConfig, DataLoaderConfig
+from ..data.config import TokenizerConfig, DataLoaderConfig
 from ..model import ModelConfig
 
 
@@ -102,6 +102,5 @@ class RunConfig:
 
     trainer: TrainerConfig = field(default_factory=TrainerConfig)
 
-    dataset: DatasetConfig = field(default_factory=DatasetConfig)
     tokenizer: TokenizerConfig = field(default_factory=TokenizerConfig)
     data: DataLoaderConfig = field(default_factory=DataLoaderConfig)

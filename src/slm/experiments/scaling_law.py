@@ -644,6 +644,9 @@ class ScalingLawExperiment():
         )
 
         return sweep_id
+
+    def anaylsis(self):
+        raise NotImplementedError
     
 if __name__ == "__main__":
     from omegaconf import OmegaConf

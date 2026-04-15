@@ -88,30 +88,37 @@ class PreprocessConfig:
     # execution
     num_proc: int = 4
     debug: bool = False
-
+    
 @dataclass
 class DataLoaderConfig:
-    # routing
-    mode: str = "tokens"          # "text" or "tokens"
-    backend: str = "torch"        # "torch" or "ray"
+    mode: str = "tokens"
+    backend: str = "torch"
 
     seq_len: int = 1024
-
-    # loader behavior
     batch_size: int = 8
     shuffle_train: bool = True
     num_workers: int = 0
     pin_memory: bool = True
     drop_last: bool = True
-
     stride: Optional[int] = None
-
-    # ray-only
     ray_prefetch_batches: int = 1
 
-    # pretokenized mode
-    train_bin_path: Optional[str] = "artifacts/tokenizer/latest/splits/train.bin"
-    val_bin_path: Optional[str] = "artifacts/tokenizer/latest/splits/val.bin"
+    # token mode
+    train_bin_path: Optional[str] = None
+    val_bin_path: Optional[str] = None
+
+    # text mode
+    source_type: Optional[str] = None
+    train_paths: Optional[str] = None
+    val_paths: Optional[str] = None
+    text_fields: list[str] = field(default_factory=lambda: ["text"])
+    max_train_samples: Optional[int] = None
+    max_val_samples: Optional[int] = 2000
+    val_fraction: float = 0.0
+    split_seed: int = 42
+    seed: int = 42
+    shuffle: bool = True
+    shuffle_buffer_size: int = 10000
 
 @dataclass
 class PreprocessStageConfig:

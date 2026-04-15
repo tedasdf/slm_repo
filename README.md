@@ -42,19 +42,21 @@ Stoachstic Lanczos Quadrature methods
 
 ## Training Stability
 - [ ] Add continuous training / resume from checkpoint
-  - [ ] Save periodic checkpoints during training
-  - [ ] Restore model, optimizer, scheduler, scaler, and train state
+  - [X] Save periodic checkpoints during training
+  - [X] Restore model, optimizer, scheduler, scaler, and train state
   - [ ] Resume cleanly after Slurm interruption or timeout
   - [ ] Keep both `last` and `best` checkpoints
 
-## Infrastructure
-- [ ] Fix DVC pull / DVC setup on M3
-  - [ ] Ensure packages install into the real `slm_ven` Conda environment
-  - [ ] Install `dvc[s3]` inside the working env
-  - [ ] Verify `dvc remote list`
-  - [ ] Verify `dvc pull`
-  - [ ] Verify S3 auth / credentials on M3
+## Infrastructure 
+- [X] Fix DVC pull / DVC setup on M3
+  - [X] Ensure packages install into the real `slm_ven` Conda environment
+  - [X] Install `dvc[s3]` inside the working env
+  - [X] Verify `dvc remote list`
+  - [X] Verify `dvc pull`
+  - [X] Verify S3 auth / credentials on M3
   - [ ] Clean up old user-site installs after current jobs finish
+  - waiting for test
+
 
 ## Analysis / Diagnostics
 - [ ] Add Hessian analysis tool

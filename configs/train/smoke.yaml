@@ -76,23 +76,62 @@ trainer:
 
   num_sanity_val_steps: 0
 
-dataset:
-  source_type: "dolma_local"
-  data_files_glob: "./artifacts/data/dolma_v1_6_sample/**/*.json.gz"
-  dataset_name: "allenai/dolma3_mix-6T"
-  dataset_config_name: "default"
-  train_split_name: "train"
-  val_split_name: null
-  test_split_name: null
+# data:
+#   mode: tokens
+#   backend: torch
+#   train_bin_path: artifacts/tokenizer/latest/splits/train.bin
+#   val_bin_path: artifacts/tokenizer/latest/splits/val.bin
+#   seq_len: 1024
+#   batch_size: 8
+#   shuffle_train: true
+#   num_workers: 0
+#   pin_memory: true
+#   drop_last: true
+#   stride: null
+#   ray_prefetch_batches: 1
+data:
+  mode: text
+  backend: ray
+  source_type: json
+  train_paths: s3://attention-ntp-pipeline-data-2026/datasets/dolma_v1_6_sample/**/*.json.gz
+  val_paths: null
   text_fields: ["text"]
-  cache_dir: "artifacts/data/hf_cache"
-  streaming: true
-  max_train_samples: 50
-  max_val_samples: null
-  max_test_samples: null
+
+  max_train_samples: null
+  max_val_samples: 2000
+  val_fraction: 0.01
+  split_seed: 42
   seed: 42
   shuffle: true
   shuffle_buffer_size: 10000
+
+  seq_len: 1024
+  batch_size: 8
+  num_workers: 0
+  pin_memory: true
+  drop_last: true
+  ray_prefetch_batches: 1
+  
+# dataset:
+#   source_type: "dolma_local"
+#   data_files_glob: "./artifacts/data/dolma_v1_6_sample/**/*.json.gz"
+#   dataset_name: "allenai/dolma3_mix-6T"
+#   dataset_config_name: "default"
+#   train_split_name: "train"
+#   val_split_name: null
+#   test_split_name: null
+#   text_fields: ["text"]
+#   cache_dir: "artifacts/data/hf_cache"
+#   streaming: true
+
+#   max_train_samples: null
+#   max_val_samples: 2000
+#   max_test_samples: null
+#   val_fraction: 0.01
+#   split_seed: 42
+#   seed: 42
+#   shuffle: true
+#   shuffle_buffer_size: 10000
 
 tokenizer:
   tokenizer_type: "bpe"
@@ -106,17 +145,4 @@ tokenizer:
   tokenizer_train_samples: 500000
   tokenizer_path: "artifacts/tokenizer/runtime/tokenizer.json"
   allow_missing_tokenizer: true
-
-data:
-  use_online_tokenization: true
-  batch_size: 2
-  seq_len: 128
-  stride: null
-  shuffle_train: true
-  num_workers: 0
-  pin_memory: true
-  drop_last: true
-
-
-
 

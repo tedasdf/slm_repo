@@ -139,7 +139,7 @@ def assemble_training_components(run_cfg: Any) -> dict[str, Any]:
     model = build_model(run_cfg.model)
     optimizer = build_optimizer(model, run_cfg.optimizer)
     scheduler = build_scheduler(optimizer, getattr(run_cfg, "scheduler", None))
-    train_loader, val_loader = build_dataloaders(run_cfg)
+    train_loader, val_loader = build_dataloaders(loader_cfg=run_cfg.data)
     callbacks = build_callbacks(getattr(run_cfg, "logging", None))
 
     tokenizer_cfg = getattr(run_cfg, "tokenizer", None)
