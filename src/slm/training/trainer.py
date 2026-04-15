@@ -153,6 +153,41 @@ class Trainer:
 
         return batch, None
 
+    def _tokenize_batch_if_needed(self, batch: Any) -> Any:
+        out = maybe_tokenize_batch(
+            batch,
+            self.tokenizer,
+            text_key=getattr(self.config, "text_key", "text"),
+            eos_token=(
+                getattr(self.tokenizer_cfg, "eos_token", None)
+                if self.tokenizer_cfg is not None
+                else None
+            ),
+            pad_token=(
+                getattr(self.tokenizer_cfg, "pad_token", None)
+                if self.tokenizer_cfg is not None
+                else None
+            ),
+            append_eos=(
+                getattr(self.tokenizer_cfg, "append_eos", True)
+                if self.tokenizer_cfg is not None
+                else True
+            ),
+            max_seq_len=getattr(self.config, "max_seq_len", None),
+        )
+
+        if (
+            out is batch
+            and isinstance(batch, dict)
+            and getattr(self.config, "text_key", "text") in batch
+        ):
+            raise ValueError(
+                "Received raw-text batch but no tokenizer is available. "
+                "Provide a tokenizer or enable tokenizer fitting before training."
+            )
+
+        return out
+
     def _compute_loss(self, batch: Any) -> tuple[torch.Tensor, dict[str, Any], Any | None]:
         batch = self._tokenize_batch_if_needed(batch)
         batch = move_to_device(batch, self.device)
