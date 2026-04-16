@@ -380,7 +380,6 @@ class _RayTextBatchLoader:
 
             yield {"text": texts}
 
-
 def _build_text_ray_dataloaders(
     loader_cfg: DataLoaderConfig,
     *,
@@ -388,14 +387,20 @@ def _build_text_ray_dataloaders(
     world_size: int = 1,
     is_distributed: bool = False,
 ):
-    if is_distributed:
-        raise NotImplementedError(
-            "Distributed text loading is not implemented for backend='ray' yet. "
-            "Use backend='torch' for now."
-        )
     val_fraction = float(getattr(loader_cfg, "val_fraction", 0.0))
     split_seed = int(getattr(loader_cfg, "split_seed", 42))
     prefetch_batches = int(getattr(loader_cfg, "ray_prefetch_batches", 1))
+
+    if is_distributed:
+        if world_size < 2:
+            raise ValueError(
+                f"is_distributed=True but world_size={world_size}. "
+                "Expected world_size >= 2."
+            )
+        if not (0 <= rank < world_size):
+            raise ValueError(
+                f"Invalid rank/world_size combination: rank={rank}, world_size={world_size}"
+            )
 
     train_ds = _build_ray_text_dataset(
         loader_cfg,
@@ -404,6 +409,11 @@ def _build_text_ray_dataloaders(
         val_fraction=val_fraction,
         split_seed=split_seed,
     )
+
+    if is_distributed:
+        # Static per-rank sharding for torch.distributed / torchrun style launch.
+        # `equal=True` keeps shard sizes aligned across ranks, which is safer for DDP.
+        train_ds = train_ds.split(world_size, equal=True)[rank]
 
     train_loader = _RayTextBatchLoader(
         train_ds,
@@ -428,6 +438,11 @@ def _build_text_ray_dataloaders(
             split_seed=split_seed,
         )
 
+        if is_distributed:
+            # Keep validation shard lengths aligned too.
+            # Note: equal=True may drop a small remainder.
+            val_ds = val_ds.split(world_size, equal=True)[rank]
+
         val_loader = _RayTextBatchLoader(
             val_ds,
             batch_size=loader_cfg.batch_size,
@@ -436,6 +451,7 @@ def _build_text_ray_dataloaders(
         )
 
     return train_loader, val_loader
+
 
 def build_text_dataloaders(
     loader_cfg: DataLoaderConfig,
