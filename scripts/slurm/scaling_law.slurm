@@ -30,6 +30,6 @@ nvidia-smi
 
 # python -m src.slm.main --config_path configs/train/baseline.yaml --experiment_path configs/experiment/scaling_law.yaml --experiment
 
-torchrun --nproc_per_node=4 -m src.slm.main --config_path configs/experiment/scaling_law.yaml
+torchrun --nproc_per_node=4 -m src.slm.main --config_path configs/train/smoke.yaml
 
 echo "Finished at: $(date)"
