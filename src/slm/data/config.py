@@ -120,6 +120,11 @@ class DataLoaderConfig:
     shuffle: bool = True
     shuffle_buffer_size: int = 10000
 
+    ray_num_cpus: int = 4
+    ray_read_concurrency: int = 4
+    ray_override_num_blocks: Optional[int] = None
+  
+
 @dataclass
 class PreprocessStageConfig:
     version: str = 'v_1'
