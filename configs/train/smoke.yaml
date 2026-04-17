@@ -117,6 +117,9 @@ data:
   drop_last: true
   ray_prefetch_batches: 1
   
+  ray_num_cpus: 4
+  ray_read_concurrency: 4
+  ray_override_num_blocks: null
   
 # dataset:
 #   source_type: "dolma_local"
