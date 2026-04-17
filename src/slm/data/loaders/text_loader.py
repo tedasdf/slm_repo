@@ -297,6 +297,26 @@ def _resolve_ray_paths(loader_cfg: DataLoaderConfig, split_name: str) -> Any:
     )
 
 
+def _ensure_ray_initialized(loader_cfg: DataLoaderConfig):
+    ray = _require_ray()
+
+    if ray.is_initialized():
+        return ray
+
+    ray_address = getattr(loader_cfg, "ray_address", None)
+    ray_num_cpus = getattr(loader_cfg, "ray_num_cpus", None)
+
+    init_kwargs = {"ignore_reinit_error": True}
+
+    if ray_address:
+        init_kwargs["address"] = ray_address
+    elif ray_num_cpus is not None:
+        init_kwargs["num_cpus"] = int(ray_num_cpus)
+
+    ray.init(**init_kwargs)
+    return ray
+
+
 def _build_ray_text_dataset(
     loader_cfg: DataLoaderConfig,
     *,
@@ -305,7 +325,7 @@ def _build_ray_text_dataset(
     val_fraction: float,
     split_seed: int,
 ):
-    ray = _require_ray()
+    ray = _ensure_ray_initialized(loader_cfg)
 
     use_synth_split = _use_synthetic_val_split(loader_cfg, split_name, val_fraction)
     source_split_name = "train" if use_synth_split else split_name
