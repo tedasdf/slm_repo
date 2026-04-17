@@ -317,6 +317,7 @@ def _ensure_ray_initialized(loader_cfg: DataLoaderConfig):
     return ray
 
 
+
 def _build_ray_text_dataset(
     loader_cfg: DataLoaderConfig,
     *,
@@ -336,12 +337,25 @@ def _build_ray_text_dataset(
     text_fields = list(getattr(loader_cfg, "text_fields", ["text"]))
     read_columns = text_fields if source_type == "parquet" and text_fields else None
 
+    ray_read_concurrency = getattr(loader_cfg, "ray_read_concurrency", None)
+    ray_override_num_blocks = getattr(loader_cfg, "ray_override_num_blocks", None)
+
+    reader_kwargs = {}
+    if ray_read_concurrency is not None:
+        reader_kwargs["concurrency"] = int(ray_read_concurrency)
+    if ray_override_num_blocks is not None:
+        reader_kwargs["override_num_blocks"] = int(ray_override_num_blocks)
+
     if source_type == "parquet":
-        ds = ray.data.read_parquet(paths, columns=read_columns)
+        ds = ray.data.read_parquet(
+            paths,
+            columns=read_columns,
+            **reader_kwargs,
+        )
     elif source_type in {"json", "jsonl"}:
-        ds = ray.data.read_json(paths)
+        ds = ray.data.read_json(paths, **reader_kwargs)
     elif source_type in {"text", "txt"}:
-        ds = ray.data.read_text(paths)
+        ds = ray.data.read_text(paths, **reader_kwargs)
     else:
         raise NotImplementedError(
             f"Ray text loader does not support source_type={source_type!r} yet. "
