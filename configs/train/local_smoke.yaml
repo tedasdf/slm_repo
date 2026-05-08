@@ -1,0 +1,120 @@
+model:
+  vocab_size: 512
+  max_seq_len: 128
+
+  num_layers: 2
+  model_dim: 128
+
+  block_type: "baseline"
+  norm_type: "rmsnorm"
+  tie_embeddings: true
+  logit_softcap: null
+
+  attention:
+    attention_type: "baseline"
+    num_heads: 4
+    num_kv_heads: 4
+    head_dim: null
+    rope_base: 10000.0
+    qk_gain_init: 1.0
+    window_size: null
+
+  mlp:
+    mlp_type: "swiglu"
+    hidden_dim: null
+    mlp_mult: 4.0
+
+  init:
+    init_std: 0.02
+    tied_embed_init_std: null
+
+optimizer:
+  optimizer_type: "adamw"
+  lr: 0.0005
+  weight_decay: 0.01
+  beta1: 0.9
+  beta2: 0.95
+  eps: 1.0e-8
+
+scheduler:
+  scheduler_type: "constant"
+  t_max: null
+  eta_min: 0.0
+
+logging:
+  use_print_callback: true
+  use_wandb: false
+  wandb_project: "slm-runs"
+  wandb_run_name: "local-smoke"
+  wandb_tags:
+    - "smoke"
+    - "local"
+
+trainer:
+  device: "cuda"
+  precision: "bf16"
+
+  train_tokenizer_before_fit: true
+
+  target_train_tokens: null
+  text_key: "text"
+  max_seq_len: 128
+
+  max_steps: 20
+  max_epochs: null
+
+  grad_accum_steps: 1
+  clip_grad_norm: 1.0
+
+  train_log_every: 1
+  eval_every: 10
+
+  save_checkpoints: false
+  checkpoint_every: 100
+
+  max_eval_batches: 4
+
+  compile_model: false
+  enable_anomaly_detection: false
+
+  save_best_checkpoint: false
+  metric_name_for_best: "val_loss"
+  metric_mode_for_best: "min"
+
+  num_sanity_val_steps: 0
+
+data:
+  mode: text
+  backend: torch
+  source_type: dolma_local
+
+  train_paths: artifacts/data/smoke_jsonl/*.json.gz
+  val_paths: null
+  text_fields: ["text"]
+
+  max_train_samples: 200
+  max_val_samples: 40
+  val_fraction: 0.2
+  split_seed: 42
+  seed: 42
+  shuffle: true
+  shuffle_buffer_size: 1000
+
+  seq_len: 128
+  batch_size: 4
+  num_workers: 0
+  pin_memory: true
+  drop_last: true
+
+tokenizer:
+  tokenizer_type: "bpe"
+  vocab_size: 512
+  min_frequency: 1
+  pad_token: "<pad>"
+  eos_token: "<eos>"
+  unk_token: "<unk>"
+  bos_token: null
+  reuse_existing: false
+  tokenizer_train_samples: 200
+  tokenizer_path: "artifacts/tokenizer/smoke/tokenizer.json"
+  allow_missing_tokenizer: true

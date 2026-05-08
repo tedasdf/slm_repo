@@ -25,7 +25,7 @@ optimizer:
 
 scheduler:
   scheduler_type: "cosine"
-  t_max: null
+  t_max: 10000
   eta_min: 0.0
 
 logging:
@@ -85,7 +85,7 @@ trainer:
 data:
   mode: text
   backend: ray
-  source_type: parquet
+  source_type: jsonl
   train_paths: s3://attention-ntp-pipeline-data-2026/datasets/dolma_v1_6_sample/**/*.json.gz
   val_paths: null
   text_fields: ["text"]

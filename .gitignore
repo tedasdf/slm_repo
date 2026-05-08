@@ -8,3 +8,26 @@ __pycache__
 .env
 
 wandb
+
+# Local secrets
+.env
+.env.*
+!.env.example
+
+# Generated logs / experiment outputs
+logs/
+wandb/
+artifacts/
+checkpoints/
+runs/
+outputs/
+
+# Build/test/cache outputs
+*.egg-info/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.out
+*.err
+*.log

@@ -7,7 +7,7 @@ import torch
 from omegaconf import OmegaConf
 from torch.nn.parallel import DistributedDataParallel as DDP
 
-from src.slm.experiments.scaling_law import (
+from slm.experiments.scaling_law import (
     ScalingLawExperiment,
     ScalingLawExperimentConfig,
 )

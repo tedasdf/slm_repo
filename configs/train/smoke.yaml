@@ -96,7 +96,7 @@ trainer:
 #   ray_prefetch_batches: 1
 data:
   mode: text
-  backend: ray
+  backend: torch
   source_type: parquet
   train_paths: s3://attention-ntp-artifact/datasets/dolma_v1_6_parquet
   val_paths: null

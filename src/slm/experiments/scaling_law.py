@@ -8,8 +8,8 @@ from typing import Any
 import wandb
 
 
-from src.slm.training import RunConfig
-from src.slm.training.builders import build_model, build_trainer
+from slm.training import RunConfig
+from slm.training.builders import build_model, build_trainer
 
 from dataclasses import asdict, dataclass, field
 from typing import Any

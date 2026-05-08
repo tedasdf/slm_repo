@@ -29,6 +29,8 @@ export TOKENIZERS_PARALLELISM=false
 
 nvidia-smi
 
-torchrun --nproc_per_node=1 -m src.slm.main --config_path configs/train/smoke.yaml
+CONFIG_PATH="${CONFIG_PATH:-configs/train/smoke.yaml}"
+echo "Config path: ${CONFIG_PATH}"
+torchrun --nproc_per_node=1 -m slm.main --config_path "${CONFIG_PATH}"
 
 echo "Finished at: $(date)"

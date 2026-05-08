@@ -77,7 +77,7 @@ class CausalSelfAttention(nn.Module):
 
 class ExclusionSelfAttention(CausalSelfAttention):
     def __init__(self, cfg: ModelConfig) -> None:
-        super.__init__(cfg)
+        super().__init__(cfg)
     
     def forward(self, x: torch.Tensor, **kwargs: object) -> torch.Tensor:
         bsz, seq_len, _ = x.shape
@@ -100,8 +100,7 @@ class ExclusionSelfAttention(CausalSelfAttention):
             v,
             attn_mask=None,
             dropout_p=0.0,
-            is_causal=True,
-            enable_gqa=(self.num_heads != self.num_kv_heads),
+            is_causal=True
         )
 
         if self.num_heads != self.num_kv_heads:
@@ -157,8 +156,7 @@ class SlidingWindowAttention(CausalSelfAttention):
             v,
             attn_mask=mask,
             dropout_p=0.0,
-            is_causal=False,
-            enable_gqa=(self.num_heads != self.num_kv_heads),
+            is_causal=False
         )
 
         y = y.transpose(1, 2).contiguous().view(
@@ -174,8 +172,14 @@ class ResidualAttention():
 ATTENTION_REGISTRY: dict[str, type[nn.Module]] = {
     "baseline": CausalSelfAttention,
     "gqa": CausalSelfAttention,
-    'SlidingWindow': SlidingWindowAttention,
-    'XSA': ExclusionSelfAttention,
+    "swa": SlidingWindowAttention,
+    "gqa_swa": SlidingWindowAttention,
+    "xsa": ExclusionSelfAttention,
+    "xsa_gqa": ExclusionSelfAttention,
+    # These combined variants are named in ModelConfig but need dedicated
+    # implementation before they should be enabled:
+    # "xsa_swa": ...,
+    # "xsa_gqa_swa": ...,
 }
 
 
