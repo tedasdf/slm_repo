@@ -97,7 +97,7 @@ trainer:
 data:
   mode: text
   backend: torch
-  source_type: parquet
+  source_type: dolma_local
   train_paths: s3://attention-ntp-artifact/datasets/dolma_v1_6_parquet
   val_paths: null
   text_fields: ["text"]
