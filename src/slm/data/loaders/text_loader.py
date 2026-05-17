@@ -13,6 +13,52 @@ from ..tokenization import (
     stable_example_key,
 )
 
+def _iter_huggingface_examples(
+    loader_cfg: DataLoaderConfig,
+    *,
+    split_name: str,
+    seed: int,
+) -> Iterator[dict]:
+    try:
+        from datasets import load_dataset
+    except ImportError as exc:
+        raise ImportError(
+            "Hugging Face dataset loading requested, but 'datasets' is not installed. "
+            "Install it with: pip install datasets"
+        ) from exc
+
+    dataset_name = getattr(loader_cfg, "dataset_name", None)
+    if not dataset_name:
+        raise ValueError(
+            "source_type='huggingface' requires data.dataset_name, "
+            "for example dataset_name='allenai/dolma'."
+        )
+
+    dataset_config_name = getattr(loader_cfg, "dataset_config_name", None)
+    cache_dir = getattr(loader_cfg, "cache_dir", None)
+    streaming = bool(getattr(loader_cfg, "streaming", True))
+    shuffle = bool(getattr(loader_cfg, "shuffle", False))
+    shuffle_buffer_size = int(getattr(loader_cfg, "shuffle_buffer_size", 10_000))
+
+    hf_split = (
+        getattr(loader_cfg, "train_split_name", "train")
+        if split_name == "train"
+        else getattr(loader_cfg, "val_split_name", None) or split_name
+    )
+
+    ds = load_dataset(
+        path=dataset_name,
+        name=dataset_config_name,
+        split=hf_split,
+        streaming=streaming,
+        cache_dir=cache_dir,
+    )
+
+    if streaming and shuffle:
+        ds = ds.shuffle(buffer_size=shuffle_buffer_size, seed=seed)
+
+    yield from ds
+
 
 def _as_dataset_view(loader_cfg: DataLoaderConfig) -> Any:
     """
@@ -169,13 +215,25 @@ class RawTextDataset(IterableDataset):
 
         global_sample_idx = 0
 
-        for row in iter_examples(
-            self.dataset_view,
-            split_name=source_split_name,
-            seed=getattr(self.loader_cfg, "seed", 42) + self.seed_offset,
-            smoke_test=False,
-            max_samples=None,
-        ):
+        source_type = str(getattr(self.loader_cfg, "source_type", "json")).strip().lower()
+        seed = getattr(self.loader_cfg, "seed", 42) + self.seed_offset
+
+        if source_type in {"huggingface", "hf", "hf_dataset"}:
+            row_iter = _iter_huggingface_examples(
+                self.loader_cfg,
+                split_name=source_split_name,
+                seed=seed,
+            )
+        else:
+            row_iter = iter_examples(
+                self.dataset_view,
+                split_name=source_split_name,
+                seed=seed,
+                smoke_test=False,
+                max_samples=None,
+            )
+
+        for row in row_iter:
             if not self._row_belongs_to_requested_split(row):
                 continue
 

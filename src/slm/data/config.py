@@ -109,6 +109,14 @@ class DataLoaderConfig:
 
     # text mode
     source_type: Optional[str] = None
+    dataset_name: Optional[str] = None
+    dataset_config_name: Optional[str] = None
+    train_split_name: str = "train"
+    val_split_name: Optional[str] = None
+    test_split_name: Optional[str] = None
+    cache_dir: Optional[str] = None
+    streaming: bool = True
+
     train_paths: Optional[str] = None
     val_paths: Optional[str] = None
     text_fields: list[str] = field(default_factory=lambda: ["text"])
@@ -119,10 +127,6 @@ class DataLoaderConfig:
     seed: int = 42
     shuffle: bool = True
     shuffle_buffer_size: int = 10000
-
-    ray_num_cpus: int = 4
-    ray_read_concurrency: int = 4
-    ray_override_num_blocks: Optional[int] = None
   
 
 @dataclass

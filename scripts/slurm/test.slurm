@@ -12,9 +12,7 @@
 
 set -euo pipefail
 
-mkdir -p logs/slurm
-
-echo "Job ID: $SLURM_JOB_ID"
+echo "Job ID: ${SLURM_JOB_ID}"
 echo "Host: $(hostname)"
 echo "Started at: $(date)"
 
@@ -23,14 +21,23 @@ conda activate slm_ven
 
 cd /home/slo/vf38_scratch2/sloo0021/slm_repo
 
+mkdir -p logs/slurm
+
 export OMP_NUM_THREADS=4
 export MKL_NUM_THREADS=4
 export TOKENIZERS_PARALLELISM=false
 
+# Hugging Face cache on scratch, not home
+export HF_HOME=/home/slo/vf38_scratch2/sloo0021/hf_cache
+export HF_DATASETS_CACHE=/home/slo/vf38_scratch2/sloo0021/hf_cache/datasets
+mkdir -p "${HF_HOME}" "${HF_DATASETS_CACHE}"
+
 nvidia-smi
 
-CONFIG_PATH="${CONFIG_PATH:-configs/train/smoke.yaml}"
+CONFIG_PATH="${CONFIG_PATH:-configs/train/fineweb_edu_smoke.yaml}"
+
 echo "Config path: ${CONFIG_PATH}"
+
 torchrun --nproc_per_node=1 -m src.slm.main --config_path "${CONFIG_PATH}"
 
 echo "Finished at: $(date)"

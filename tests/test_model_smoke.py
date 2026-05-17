@@ -1,8 +1,8 @@
 import torch
 
-from slm.model import ModelConfig, TransformerLM
-from slm.model.attention import ATTENTION_REGISTRY
-from slm.model.config import AttentionConfig, InitConfig, MLPConfig
+from src.slm.model import ModelConfig, TransformerLM
+from src.slm.model.attention import ATTENTION_REGISTRY
+from src.slm.model.config import AttentionConfig, InitConfig, MLPConfig
 
 
 def make_tiny_config(attention_type: str = "baseline") -> ModelConfig:
