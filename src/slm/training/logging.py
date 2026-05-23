@@ -34,6 +34,8 @@ class PrintMetricsCallback(Callback):
         lr = _to_float(extra.get("optimizer/lr"))
         grad_norm = _to_float(extra.get("diagnostics/grad_norm"))
         elapsed = _to_float(extra.get("timing/elapsed_since_start_sec"))
+        tokens_per_sec = _to_float(extra.get("throughput/tokens_per_sec"))
+        gpu_mem = _to_float(extra.get("gpu/memory_reserved_gb"))
 
         parts = [f"{self.prefix} step={state.step}"]
 
@@ -43,6 +45,10 @@ class PrintMetricsCallback(Callback):
             parts.append(f"lr={lr:.6e}")
         if grad_norm is not None:
             parts.append(f"grad_norm={grad_norm:.4f}")
+        if tokens_per_sec is not None:
+            parts.append(f"tok/s={tokens_per_sec:,.0f}")
+        if gpu_mem is not None:
+            parts.append(f"gpu_mem={gpu_mem:.2f}GB")
         if elapsed is not None:
             parts.append(f"elapsed={elapsed:.1f}s")
 
@@ -119,6 +125,8 @@ class WandBCallback(Callback):
             "diagnostics/grad_norm",
             "timing/elapsed_since_start_sec",
             "diagnostics/has_nan_or_inf_loss",
+            "throughput/tokens_per_sec",
+            "gpu/memory_reserved_gb",
         ]:
             value = extra.get(key)
             if value is not None:

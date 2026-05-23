@@ -466,6 +466,16 @@ class Trainer:
                         )
                         self.state.extra["timing/elapsed_since_start_sec"] = step_time
 
+                        if step_time and step_time > 0:
+                            self.state.extra["throughput/tokens_per_sec"] = (
+                                self.state.train_tokens_seen / step_time
+                            )
+
+                        if self.device.type == "cuda":
+                            self.state.extra["gpu/memory_reserved_gb"] = (
+                                torch.cuda.memory_reserved(self.device) / 1024 ** 3
+                            )
+
                         target_train_tokens = getattr(self.config, "target_train_tokens", None)
                         if (
                             target_train_tokens is not None
