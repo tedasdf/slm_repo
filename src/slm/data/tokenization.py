@@ -368,6 +368,60 @@ def iter_huggingface_examples(
         count += 1
         yield row
 
+def iter_jsonl_examples(
+    dataset_cfg,
+    seed: int,
+    smoke_test: bool = False,
+    max_samples: Optional[int] = None,
+):
+    import io
+
+    pattern = dataset_cfg.data_files_glob
+    paths = sorted(glob.glob(pattern, recursive=True))
+    if not paths:
+        raise ValueError(f"No JSONL files matched: {pattern}")
+
+    if dataset_cfg.shuffle:
+        rng = random.Random(seed)
+        rng.shuffle(paths)
+
+    hard_cap = 1000 if smoke_test else max_samples
+    count = 0
+
+    for path in paths:
+        if hard_cap is not None and count >= hard_cap:
+            return
+
+        if path.endswith(".zst"):
+            dctx = zstd.ZstdDecompressor()
+            with open(path, "rb") as fh, dctx.stream_reader(fh) as reader:
+                for line in io.TextIOWrapper(reader, encoding="utf-8"):
+                    if hard_cap is not None and count >= hard_cap:
+                        return
+                    if not line.strip():
+                        continue
+                    yield json.loads(line)
+                    count += 1
+        elif path.endswith(".gz"):
+            with gzip.open(path, "rt", encoding="utf-8") as f:
+                for line in f:
+                    if hard_cap is not None and count >= hard_cap:
+                        return
+                    if not line.strip():
+                        continue
+                    yield json.loads(line)
+                    count += 1
+        else:
+            with open(path, "r", encoding="utf-8") as f:
+                for line in f:
+                    if hard_cap is not None and count >= hard_cap:
+                        return
+                    if not line.strip():
+                        continue
+                    yield json.loads(line)
+                    count += 1
+
+
 def iter_examples(
     dataset_cfg,
     split_name: str,
@@ -377,6 +431,15 @@ def iter_examples(
 ):
     if dataset_cfg.source_type == "dolma_local":
         yield from iter_dolma_json_gz_examples(
+            dataset_cfg=dataset_cfg,
+            seed=seed,
+            smoke_test=smoke_test,
+            max_samples=max_samples,
+        )
+        return
+
+    if dataset_cfg.source_type == "jsonl":
+        yield from iter_jsonl_examples(
             dataset_cfg=dataset_cfg,
             seed=seed,
             smoke_test=smoke_test,
