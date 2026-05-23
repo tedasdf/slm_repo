@@ -19,7 +19,6 @@ MLPType = Literal["gelu", "swiglu", "relu2"]
 NormType = Literal["layernorm", "rmsnorm"]
 BlockType = Literal["baseline"]
 
-
 @dataclass
 class AttentionConfig:
     attention_type: str = "baseline"
@@ -33,8 +32,16 @@ class AttentionConfig:
     rope_base: float = 10_000.0
     qk_gain_init: float = 1.0
     window_size: Optional[int] = None
+    dropout: float = 0.0
 
     def __post_init__(self) -> None:
+        
+        if self.rope_base <= 0:
+            raise ValueError("rope_base must be > 0")
+
+        if not 0.0 <= self.dropout < 1.0:
+            raise ValueError("attention.dropout must be >= 0.0 and < 1.0")
+        
         if self.num_heads <= 0:
             raise ValueError("num_heads must be > 0")
 

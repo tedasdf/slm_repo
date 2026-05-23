@@ -20,6 +20,8 @@ class CausalSelfAttention(nn.Module):
         self.head_dim = cfg.head_dim
         self.num_kv_heads = cfg.num_kv_heads
 
+        self.dropout = float(cfg.attention.dropout)
+        
         self.q_proj = nn.Linear(self.model_dim, self.num_heads * self.head_dim, bias=False)
         self.k_proj = nn.Linear(self.model_dim, self.num_kv_heads * self.head_dim, bias=False)
         self.v_proj = nn.Linear(self.model_dim, self.num_kv_heads * self.head_dim, bias=False)
@@ -63,15 +65,37 @@ class CausalSelfAttention(nn.Module):
         )
         q, k = apply_rope(q, k, cos, sin)
 
-        y = F.scaled_dot_product_attention(
-            q,
-            k,
-            v,
-            attn_mask=None,
-            dropout_p=0.0,
-            is_causal=True,
-        )
+        use_cuda = q.is_cuda and torch.cuda.is_available()
 
+        dropout_p = self.dropout if self.training else 0.0
+        use_cuda = q.is_cuda and torch.cuda.is_available()
+
+        if use_cuda:
+            major, _ = torch.cuda.get_device_capability(q.device)
+            is_ampere_or_newer = major >= 8
+
+            with torch.backends.cuda.sdp_kernel(
+                enable_flash=is_ampere_or_newer,
+                enable_math=True,
+                enable_mem_efficient=is_ampere_or_newer,
+            ):
+                y = F.scaled_dot_product_attention(
+                    q,
+                    k,
+                    v,
+                    attn_mask=None,
+                    dropout_p=dropout_p,
+                    is_causal=True,
+                )
+        else:
+            y = F.scaled_dot_product_attention(
+                q,
+                k,
+                v,
+                attn_mask=None,
+                dropout_p=dropout_p,
+                is_causal=True,
+            )
         y = y.transpose(1, 2).contiguous().view(bsz, seq_len, self.num_heads * self.head_dim)
         return self.out_proj(y)
 
