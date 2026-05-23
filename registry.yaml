@@ -1,0 +1,104 @@
+version: 1
+
+attention:
+  - id: baseline
+    label: Baseline Causal Self-Attention
+    stable: true
+  - id: gqa
+    label: Grouped Query Attention
+    stable: true
+  - id: swa
+    label: Sliding Window Attention
+    stable: true
+  - id: gqa_swa
+    label: Grouped Query + Sliding Window
+    stable: true
+  - id: xsa
+    label: Exclusion Self-Attention
+    stable: false
+    experimental: true
+  - id: xsa_gqa
+    label: Exclusion Self-Attention + GQA
+    stable: false
+    experimental: true
+
+normalization:
+  - id: rmsnorm
+    label: RMSNorm
+    stable: true
+  - id: layernorm
+    label: LayerNorm
+    stable: true
+  - id: baseline
+    label: RMSNorm (alias)
+    stable: true
+
+mlp:
+  - id: gelu
+    label: GELU
+    stable: true
+  - id: swiglu
+    label: SwiGLU
+    stable: true
+  - id: relu2
+    label: ReLU Squared
+    stable: true
+
+block:
+  - id: baseline
+    label: Pre-Norm Transformer Block
+    stable: true
+
+positional_encoding:
+  - id: rope
+    label: Rotary Position Embeddings (RoPE)
+    stable: true
+
+optimizer:
+  - id: adamw
+    label: AdamW
+    stable: true
+
+scheduler:
+  - id: cosine
+    label: Cosine Annealing
+    stable: true
+  - id: constant
+    label: Constant LR
+    stable: true
+
+dataset:
+  - id: huggingface
+    label: HuggingFace Datasets
+    stable: true
+  - id: jsonl
+    label: Local JSONL
+    stable: true
+  - id: dolma_local
+    label: Dolma (local .json.gz)
+    stable: true
+  - id: fineweb_edu
+    label: FineWeb-Edu
+    stable: true
+
+dataloader_mode:
+  - id: tokens
+    label: Pre-tokenised Binary Shards
+    stable: true
+  - id: text
+    label: Raw Text (tokenised at runtime)
+    stable: true
+
+dataloader_backend:
+  - id: torch
+    label: PyTorch DataLoader
+    stable: true
+  - id: ray
+    label: Ray Data
+    stable: true
+    note: token mode not yet supported
+
+tokenizer:
+  - id: bpe
+    label: BPE
+    stable: true
