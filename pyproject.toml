@@ -29,5 +29,8 @@ dev = [
     "pytest",
 ]
 
+[project.scripts]
+slm-train = "slm.main:cli"
+
 [tool.setuptools.packages.find]
 where = ["src"]

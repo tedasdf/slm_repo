@@ -7,10 +7,6 @@ import torch
 from omegaconf import OmegaConf
 from torch.nn.parallel import DistributedDataParallel as DDP
 
-from .experiments.scaling_law import (
-    ScalingLawExperiment,
-    ScalingLawExperimentConfig,
-)
 from .training.builders import (
     assemble_training_components,
     build_optimizer,
@@ -36,49 +32,8 @@ def load_config(config_path: str | Path) -> RunConfig:
     return cfg
 
 
-def load_experiment_config(
-    experiment_path: str | Path,
-) -> ScalingLawExperimentConfig:
-    schema = OmegaConf.structured(ScalingLawExperimentConfig)
-    loaded_cfg = OmegaConf.load(str(experiment_path))
-    merged = OmegaConf.merge(schema, loaded_cfg)
-
-    missing = OmegaConf.missing_keys(merged)
-    if missing:
-        raise ValueError(f"Missing experiment config fields: {sorted(missing)}")
-
-    cfg = OmegaConf.to_object(merged)
-    if not isinstance(cfg, ScalingLawExperimentConfig):
-        raise TypeError(
-            f"Expected ScalingLawExperimentConfig, got {type(cfg)}"
-        )
-    return cfg
-
-
-def main(
-    config_path: str,
-    *,
-    experiment: bool = False,
-    experiment_path: str | None = None,
-) -> None:
+def main(config_path: str) -> None:
     cfg = load_config(config_path)
-
-    if experiment:
-        if experiment_path is None:
-            raise ValueError(
-                "--experiment_path is required when --experiment is set"
-            )
-
-        experiment_cfg = load_experiment_config(experiment_path)
-
-        scaling_experiment = ScalingLawExperiment(
-            base_cfg=cfg,
-            experiment_cfg=experiment_cfg,
-        )
-
-        sweep_id = scaling_experiment.run()
-        print(f"sweep_id={sweep_id}")
-        return
 
     dist_env = setup_distributed("cuda")
 
@@ -124,15 +79,12 @@ def main(
     finally:
         cleanup_distributed()
 
-if __name__ == "__main__":
+def cli() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config_path", type=str, required=True)
-    parser.add_argument("--experiment_path", type=str, default=None)
-    parser.add_argument("--experiment", action="store_true")
     args = parser.parse_args()
+    main(config_path=args.config_path)
 
-    main(
-        config_path=args.config_path,
-        experiment=args.experiment,
-        experiment_path=args.experiment_path,
-    )
+
+if __name__ == "__main__":
+    cli()
