@@ -18,8 +18,8 @@ from datasets import load_dataset
 from omegaconf import OmegaConf
 from tokenizers import Tokenizer, decoders, models, pre_tokenizers, trainers
 from tqdm.auto import tqdm
-from slm.utils.config import resolve_config_paths
-from slm.utils.paths import finish_run, start_run
+from ..utils.config import resolve_config_paths
+from ..utils.paths import finish_run, start_run
 
 from .tokenizer import BPETokenizer
 from .config import PreprocessStageConfig

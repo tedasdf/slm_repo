@@ -6,14 +6,14 @@ from typing import Any
 import torch
 import torch.nn as nn
 
-from slm.data.tokenizer import BPETokenizer
-from slm.model import ModelConfig, TransformerLM
+from ..data.tokenizer import BPETokenizer
+from ..model import ModelConfig, TransformerLM
 from .logging import PrintMetricsCallback, WandBCallback
 from .trainer import Trainer
 
-from slm.data.config import DataLoaderConfig
-from slm.data.loaders.text_loader import build_text_dataloaders
-from slm.data.loaders.token_loader import build_token_dataloaders
+from ..data.config import DataLoaderConfig
+from ..data.loaders.text_loader import build_text_dataloaders
+from ..data.loaders.token_loader import build_token_dataloaders
 
 def build_model(model_cfg: ModelConfig) -> nn.Module:
     from torch.backends.cuda import (
