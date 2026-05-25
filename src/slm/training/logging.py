@@ -106,6 +106,23 @@ class WandBCallback(Callback):
             tags=self.tags,
         )
 
+
+        # Report wandb run ID back to TAP if running under TAP
+        tap_run_id = __import__('os').environ.get('TAP_RUN_ID')
+        tap_api_url = __import__('os').environ.get('TAP_API_URL')
+        if tap_run_id and tap_api_url and self._run:
+            try:
+                import urllib.request, json as _json
+                body = _json.dumps({'wandb_run_id': self._run.id}).encode()
+                req = urllib.request.Request(
+                    f'{tap_api_url}/runs/{tap_run_id}/wandb-run-id',
+                    data=body, method='PATCH',
+                    headers={'Content-Type': 'application/json'},
+                )
+                urllib.request.urlopen(req, timeout=5)
+            except Exception:
+                pass
+
     def on_step_end(self, trainer: Any, step_outputs: Optional[dict[str, Any]] = None) -> None:
         if not self.enabled or self._wandb is None or not getattr(trainer, "is_main", True):
             return
