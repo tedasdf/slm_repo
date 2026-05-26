@@ -82,6 +82,8 @@ def main(config_path: str, *, resume: str | None = None) -> None:
 
     finally:
         cleanup_distributed()
+        import os as _os
+        _os._exit(0)
 
 def cli() -> None:
     parser = argparse.ArgumentParser()
