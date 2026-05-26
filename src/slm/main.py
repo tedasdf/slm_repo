@@ -81,7 +81,7 @@ def main(config_path: str) -> None:
 
 def cli() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config_path", type=str, required=True)
+    parser.add_argument("--config", dest="config_path", type=str, required=True)
     args = parser.parse_args()
     main(config_path=args.config_path)
 

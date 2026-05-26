@@ -4,15 +4,10 @@ import argparse
 from dataclasses import asdict, dataclass
 import itertools
 import hashlib
-import gzip
 import os
 from pathlib import Path
 from typing import Any, Iterator, Optional
 import torch
-import glob
-import json
-import random
-import zstandard as zstd
 import numpy as np
 from datasets import load_dataset
 from omegaconf import OmegaConf
@@ -277,25 +272,20 @@ def choose_bin_dtype(vocab_size: int):
     raise ValueError("Vocab too large for uint32 token storage.")
 
 
-# iterate through text
 def extract_text(row: dict, text_fields: list[str]) -> Optional[str]:
     parts: list[str] = []
     for field_name in text_fields:
         value = row.get(field_name)
-        if value is None:
+        if not value:
             continue
-        if isinstance(value, str):
-            cleaned = value.strip()
-            if cleaned:
-                parts.append(cleaned)
-        else:
-            cleaned = str(value).strip()
-            if cleaned:
-                parts.append(cleaned)
-
+        cleaned = str(value).strip()
+        if cleaned:
+            parts.append((field_name, cleaned))
     if not parts:
         return None
-    return "\n".join(parts)
+    if len(parts) == 1:
+        return parts[0][1]
+    return "\n\n".join(f"### {name.replace('_', ' ').title()}:\n{text}" for name, text in parts)
 
 def iter_texts_from_batch(batch: Any, text_key: str = "text") -> Iterator[str]:
     if isinstance(batch, dict):
@@ -336,91 +326,6 @@ def iter_texts_from_batch(batch: Any, text_key: str = "text") -> Iterator[str]:
                         yield cleaned
             return
 
-def iter_huggingface_examples(
-    dataset_cfg,
-    split_name: str,
-    seed: int,
-    smoke_test: bool = False,
-    max_samples: Optional[int] = None,
-):
-    if dataset_cfg.source_type != "huggingface":
-        raise ValueError(f"Expected source_type='huggingface', got {dataset_cfg.source_type}")
-
-    ds = load_dataset(
-        dataset_cfg.dataset_name,
-        name=dataset_cfg.dataset_config_name,
-        split=split_name,
-        streaming=dataset_cfg.streaming,
-        cache_dir=dataset_cfg.cache_dir,
-    )
-    if dataset_cfg.shuffle:
-        if dataset_cfg.streaming:
-            ds = ds.shuffle(seed=seed, buffer_size=dataset_cfg.shuffle_buffer_size)
-        else:
-            ds = ds.shuffle(seed=seed)
-
-    hard_cap = 1000 if smoke_test else max_samples
-
-    count = 0
-    for row in ds:
-        if hard_cap is not None and count >= hard_cap:
-            break
-        count += 1
-        yield row
-
-def iter_jsonl_examples(
-    dataset_cfg,
-    seed: int,
-    smoke_test: bool = False,
-    max_samples: Optional[int] = None,
-):
-    import io
-
-    pattern = dataset_cfg.data_files_glob
-    paths = sorted(glob.glob(pattern, recursive=True))
-    if not paths:
-        raise ValueError(f"No JSONL files matched: {pattern}")
-
-    if dataset_cfg.shuffle:
-        rng = random.Random(seed)
-        rng.shuffle(paths)
-
-    hard_cap = 1000 if smoke_test else max_samples
-    count = 0
-
-    for path in paths:
-        if hard_cap is not None and count >= hard_cap:
-            return
-
-        if path.endswith(".zst"):
-            dctx = zstd.ZstdDecompressor()
-            with open(path, "rb") as fh, dctx.stream_reader(fh) as reader:
-                for line in io.TextIOWrapper(reader, encoding="utf-8"):
-                    if hard_cap is not None and count >= hard_cap:
-                        return
-                    if not line.strip():
-                        continue
-                    yield json.loads(line)
-                    count += 1
-        elif path.endswith(".gz"):
-            with gzip.open(path, "rt", encoding="utf-8") as f:
-                for line in f:
-                    if hard_cap is not None and count >= hard_cap:
-                        return
-                    if not line.strip():
-                        continue
-                    yield json.loads(line)
-                    count += 1
-        else:
-            with open(path, "r", encoding="utf-8") as f:
-                for line in f:
-                    if hard_cap is not None and count >= hard_cap:
-                        return
-                    if not line.strip():
-                        continue
-                    yield json.loads(line)
-                    count += 1
-
 
 def iter_examples(
     dataset_cfg,
@@ -429,31 +334,9 @@ def iter_examples(
     smoke_test: bool = False,
     max_samples: Optional[int] = None,
 ):
-    if dataset_cfg.source_type == "dolma_local":
-        yield from iter_dolma_json_gz_examples(
-            dataset_cfg=dataset_cfg,
-            seed=seed,
-            smoke_test=smoke_test,
-            max_samples=max_samples,
-        )
-        return
-
-    if dataset_cfg.source_type == "jsonl":
-        yield from iter_jsonl_examples(
-            dataset_cfg=dataset_cfg,
-            seed=seed,
-            smoke_test=smoke_test,
-            max_samples=max_samples,
-        )
-        return
-
-    if dataset_cfg.source_type != "huggingface":
-        raise ValueError(f"Unsupported source_type: {dataset_cfg.source_type}")
-    
-    os.environ["DATA_DIR"] = 'dolma'
-    
     ds = load_dataset(
         dataset_cfg.dataset_name,
+        name=dataset_cfg.dataset_config_name or None,
         split=split_name,
         streaming=dataset_cfg.streaming,
         cache_dir=dataset_cfg.cache_dir,
@@ -466,43 +349,12 @@ def iter_examples(
             ds = ds.shuffle(seed=seed)
 
     hard_cap = 1000 if smoke_test else max_samples
-
     count = 0
     for row in ds:
         if hard_cap is not None and count >= hard_cap:
             break
         count += 1
         yield row
-
-def iter_dolma_json_gz_examples(
-    dataset_cfg,
-    seed: int,
-    smoke_test: bool = False,
-    max_samples: Optional[int] = None,
-):
-    pattern = dataset_cfg.data_files_glob
-    paths = sorted(glob.glob(pattern, recursive=True))
-    if not paths:
-        raise ValueError(f"No Dolma files matched: {pattern}")
-
-    if dataset_cfg.shuffle:
-        rng = random.Random(seed)
-        rng.shuffle(paths)
-
-    hard_cap = 1000 if smoke_test else max_samples
-    count = 0
-
-    for path in paths:
-        with gzip.open(path, "rt", encoding="utf-8") as f:
-            for line in f:
-                if hard_cap is not None and count >= hard_cap:
-                    return
-                if not line.strip():
-                    continue
-
-                row = json.loads(line)
-                count += 1
-                yield row
 
 # use text -> hash to determin the key -> validation/train
 def stable_example_key(row: dict, text_fields: list[str]) -> str:
@@ -558,21 +410,21 @@ def iter_final_split_texts(
         return
 
     if role == "test":
-        if dataset_cfg.test_split_name is None:
-            return
-        for row in iter_examples(
-            dataset_cfg,
-            split_name=dataset_cfg.test_split_name,
-            seed=dataset_cfg.seed + 3,
-            smoke_test=smoke_test,
-            max_samples=dataset_cfg.max_test_samples,
-        ):
-            text = extract_text(row, dataset_cfg.text_fields)
-            if text:
-                yield text
+        if dataset_cfg.test_split_name is not None:
+            for row in iter_examples(
+                dataset_cfg,
+                split_name=dataset_cfg.test_split_name,
+                seed=dataset_cfg.seed + 3,
+                smoke_test=smoke_test,
+                max_samples=dataset_cfg.max_test_samples,
+            ):
+                text = extract_text(row, dataset_cfg.text_fields)
+                if text:
+                    yield text
         return
 
-    # source train split
+    # train (and synthetic val carved from train when val_split_name is None)
+    has_dedicated_val = dataset_cfg.val_split_name is not None
     for row in iter_examples(
         dataset_cfg,
         split_name=dataset_cfg.train_split_name,
@@ -584,14 +436,9 @@ def iter_final_split_texts(
         if not text:
             continue
 
-        if dataset_cfg.val_split_name is not None:
-            if role == "train":
-                yield text
-            continue
-
-        assigned = assign_train_row_to_split(row, dataset_cfg, preprocess_cfg)
-
-        if role == assigned:
+        if has_dedicated_val:
+            yield text  # all train rows belong to train; val handled above
+        elif assign_train_row_to_split(row, dataset_cfg, preprocess_cfg) == role:
             yield text
 
 

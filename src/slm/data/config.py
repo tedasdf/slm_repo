@@ -107,10 +107,20 @@ class DataLoaderConfig:
     train_bin_path: Optional[str] = None
     val_bin_path: Optional[str] = None
 
-    # text mode
+    # text mode — local files
     source_type: Optional[str] = None
     train_paths: Optional[str] = None
     val_paths: Optional[str] = None
+
+    # text mode — huggingface
+    dataset_name: Optional[str] = None
+    dataset_config_name: Optional[str] = None
+    train_split_name: str = "train"
+    val_split_name: Optional[str] = None
+    streaming: bool = True
+    cache_dir: Optional[str] = None
+
+    # text mode — shared
     text_fields: list[str] = field(default_factory=lambda: ["text"])
     max_train_samples: Optional[int] = None
     max_val_samples: Optional[int] = 2000

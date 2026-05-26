@@ -48,23 +48,23 @@ logging:
 
 
 trainer:
+  train_tokenizer_before_fit: true     # fits BPE on first pass before step 1
+  text_key: text
   device: "cuda"
   precision: "bf16"
 
-  train_tokenizer_before_fit: false
-  
+ 
   target_train_tokens: null
-  text_key: "text"
   max_seq_len: 1024
 
-  max_steps: 10000
+  max_steps: 500
   max_epochs: null
 
   grad_accum_steps: 1
   clip_grad_norm: 1.0
 
   train_log_every: 100
-  eval_every: 1000
+  eval_every: 100
 
   save_checkpoints: false
   checkpoint_every: 1000
@@ -78,80 +78,42 @@ trainer:
   metric_name_for_best: "val_loss"
   metric_mode_for_best: "min"
 
-  num_sanity_val_steps: 0
+  num_sanity_val_steps: 2
 
-
-# data:
-#   mode: tokens
-#   backend: torch
-#   train_bin_path: artifacts/tokenizer/latest/splits/train.bin
-#   val_bin_path: artifacts/tokenizer/latest/splits/val.bin
-#   seq_len: 1024
-#   batch_size: 8
-#   shuffle_train: true
-#   num_workers: 0
-#   pin_memory: true
-#   drop_last: true
-#   stride: null
-#   ray_prefetch_batches: 1
 data:
   mode: text
   backend: torch
-  source_type: dolma_local
-  train_paths: s3://attention-ntp-artifact/datasets/dolma_v1_6_parquet
-  val_paths: null
+  source_type: huggingface
+  dataset_name: HuggingFaceFW/fineweb-edu
+  dataset_config_name: sample-10BT    # omit line if no subset
+  train_split_name: train
+  val_split_name: null                 # set if dataset has a dedicated val split
+  streaming: true
   text_fields: ["text"]
 
-  max_train_samples: null
-  max_val_samples: 2000
-  val_fraction: 0.01
+  val_fraction: 0.01                   # carves 1% from train as val
   split_seed: 42
   seed: 42
   shuffle: true
   shuffle_buffer_size: 10000
+  max_train_samples: null
+  max_val_samples: 200
 
   seq_len: 1024
   batch_size: 8
   num_workers: 0
   pin_memory: true
   drop_last: true
-  ray_prefetch_batches: 1
   
-  ray_num_cpus: 4
-  ray_read_concurrency: 4
-  ray_override_num_blocks: null
-  
-# dataset:
-#   source_type: "dolma_local"
-#   data_files_glob: "./artifacts/data/dolma_v1_6_sample/**/*.json.gz"
-#   dataset_name: "allenai/dolma3_mix-6T"
-#   dataset_config_name: "default"
-#   train_split_name: "train"
-#   val_split_name: null
-#   test_split_name: null
-#   text_fields: ["text"]
-#   cache_dir: "artifacts/data/hf_cache"
-#   streaming: true
-
-#   max_train_samples: null
-#   max_val_samples: 2000
-#   max_test_samples: null
-#   val_fraction: 0.01
-#   split_seed: 42
-#   seed: 42
-#   shuffle: true
-#   shuffle_buffer_size: 10000
-
 tokenizer:
-  tokenizer_type: "bpe"
+  reuse_existing: true
+  tokenizer_path: artifacts/tokenizer/runtime/tokenizer.json
+  tokenizer_train_samples: 50000
   vocab_size: 16000
+  tokenizer_type: "bpe"
   min_frequency: 2
   pad_token: "<pad>"
   eos_token: "<eos>"
   unk_token: "<unk>"
   bos_token: null
-  reuse_existing: true
-  tokenizer_train_samples: 500000
-  tokenizer_path: "artifacts/tokenizer/runtime/tokenizer.json"
-  allow_missing_tokenizer: true
-
+  allow_missing_tokenizer: false
