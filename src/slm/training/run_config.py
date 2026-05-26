@@ -32,6 +32,7 @@ class TrainerConfig:
 
     save_checkpoints: bool = True
     checkpoint_every: Optional[int] = 1000
+    checkpoint_dir: str = "artifacts/checkpoints"
 
     max_eval_batches: Optional[int] = None
 
@@ -85,6 +86,7 @@ class LoggingConfig:
     use_print_callback: bool = True
     use_wandb: bool = False
     wandb_project: str = "slm-runs"
+    wandb_entity: Optional[str] = None
     wandb_run_name: Optional[str] = None
     wandb_tags: list[str] = field(default_factory=list)
     wandb_config: Optional[dict] = None

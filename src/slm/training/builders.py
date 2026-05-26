@@ -147,6 +147,7 @@ def build_callbacks(
         callbacks.append(
             WandBCallback(
                 project=getattr(logging_cfg, "wandb_project", "slm-runs"),
+                entity=getattr(logging_cfg, "wandb_entity", None),
                 name=getattr(logging_cfg, "wandb_run_name", None),
                 config=getattr(logging_cfg, "wandb_config", None),
                 tags=getattr(logging_cfg, "wandb_tags", None),

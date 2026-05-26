@@ -401,9 +401,9 @@ class Trainer:
         raw_model = self.model.module if hasattr(self.model, "module") else self.model
 
         ckpt = {
-            "model": raw_model.state_dict(),
-            "optimizer": self.optimizer.state_dict(),
-            "scheduler": self.scheduler.state_dict() if self.scheduler is not None else None,
+            "model_state_dict": raw_model.state_dict(),
+            "optimizer_state_dict": self.optimizer.state_dict(),
+            "scheduler_state_dict": self.scheduler.state_dict() if self.scheduler is not None else None,
             "state": {
                 "step": self.state.step,
                 "epoch": self.state.epoch,
@@ -417,7 +417,32 @@ class Trainer:
             "trainer_config": self.config.__dict__,
         }
         torch.save(ckpt, path)
-        self.callbacks.on_checkpoint_save(self, str(path))
+        is_best = (
+            self.state.last_val_loss is not None
+            and self.state.last_val_loss == self.state.best_val_loss
+        )
+        self.callbacks.on_checkpoint_save(self, str(path), is_best=is_best)
+
+    def load_checkpoint(self, path: str | Path) -> None:
+        ckpt = torch.load(path, map_location="cpu")
+
+        raw_model = self.model.module if hasattr(self.model, "module") else self.model
+        raw_model.load_state_dict(ckpt["model_state_dict"])
+        self.optimizer.load_state_dict(ckpt["optimizer_state_dict"])
+
+        if self.scheduler is not None and ckpt.get("scheduler_state_dict") is not None:
+            self.scheduler.load_state_dict(ckpt["scheduler_state_dict"])
+
+        saved = ckpt.get("state", {})
+        self.state.step = saved.get("step", 0)
+        self.state.epoch = saved.get("epoch", 0)
+        self.state.train_tokens_seen = saved.get("train_tokens_seen", 0)
+        self.state.train_samples_seen = saved.get("train_samples_seen", 0)
+        self.state.best_val_loss = saved.get("best_val_loss")
+        self.state.last_train_loss = saved.get("last_train_loss")
+        self.state.last_val_loss = saved.get("last_val_loss")
+
+        print(f"Resumed from step {self.state.step}, best_val_loss={self.state.best_val_loss}")
 
     def train(self) -> TrainState:
         self.state.started_at = time.time()
@@ -495,7 +520,7 @@ class Trainer:
                             self.config.save_checkpoints is True
                             and self.state.step % self.config.checkpoint_every == 0
                         ):
-                            ckpt_path = Path("artifacts/checkpoints") / f"step_{self.state.step}.pt"
+                            ckpt_path = Path(self.config.checkpoint_dir) / f"step_{self.state.step}.pt"
                             self.save_checkpoint(ckpt_path)
 
                 self.callbacks.on_epoch_end(self)

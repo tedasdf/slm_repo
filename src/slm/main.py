@@ -32,7 +32,7 @@ def load_config(config_path: str | Path) -> RunConfig:
     return cfg
 
 
-def main(config_path: str) -> None:
+def main(config_path: str, *, resume: str | None = None) -> None:
     cfg = load_config(config_path)
 
     dist_env = setup_distributed("cuda")
@@ -67,6 +67,10 @@ def main(config_path: str) -> None:
         components["scheduler"] = scheduler
 
         trainer = Trainer.from_components(components, dist_env=dist_env)
+
+        if resume is not None:
+            trainer.load_checkpoint(resume)
+
         state = trainer.train()
 
         if dist_env.is_main:
@@ -82,8 +86,9 @@ def main(config_path: str) -> None:
 def cli() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", dest="config_path", type=str, required=True)
+    parser.add_argument("--resume", default=None, help="path to checkpoint .pt file")
     args = parser.parse_args()
-    main(config_path=args.config_path)
+    main(config_path=args.config_path, resume=args.resume)
 
 
 if __name__ == "__main__":

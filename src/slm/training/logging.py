@@ -78,12 +78,14 @@ class WandBCallback(Callback):
     def __init__(
         self,
         project: str,
+        entity: str | None = None,
         name: str | None = None,
         config: dict[str, Any] | None = None,
         tags: list[str] | None = None,
         enabled: bool = True,
     ) -> None:
         self.project = project
+        self.entity = entity
         self.name = name
         self.config = config or {}
         self.tags = tags or []
@@ -101,27 +103,14 @@ class WandBCallback(Callback):
         self._wandb = wandb
         self._run = wandb.init(
             project=self.project,
+            entity=self.entity,
             name=self.name,
             config=self.config,
             tags=self.tags,
         )
 
-
-        # Report wandb run ID back to TAP if running under TAP
-        tap_run_id = __import__('os').environ.get('TAP_RUN_ID')
-        tap_api_url = __import__('os').environ.get('TAP_API_URL')
-        if tap_run_id and tap_api_url and self._run:
-            try:
-                import urllib.request, json as _json
-                body = _json.dumps({'wandb_run_id': self._run.id}).encode()
-                req = urllib.request.Request(
-                    f'{tap_api_url}/runs/{tap_run_id}/wandb-run-id',
-                    data=body, method='PATCH',
-                    headers={'Content-Type': 'application/json'},
-                )
-                urllib.request.urlopen(req, timeout=5)
-            except Exception:
-                pass
+        if self._run is not None:
+            print(f"TAP_WANDB_RUN_ID={self._run.id}", flush=True)
 
     def on_step_end(self, trainer: Any, step_outputs: Optional[dict[str, Any]] = None) -> None:
         if not self.enabled or self._wandb is None or not getattr(trainer, "is_main", True):
@@ -183,6 +172,31 @@ class WandBCallback(Callback):
             payload["eval/best_val_loss"] = state.best_val_loss
 
         self._wandb.log(payload, step=state.step)
+
+    def on_checkpoint_save(self, trainer: Any, checkpoint_path: str, *, is_best: bool = False) -> None:
+        if not self.enabled or self._run is None or not getattr(trainer, "is_main", True):
+            return
+
+        run_name = self._run.name or self._run.id
+        artifact = self._wandb.Artifact(
+            name=f"checkpoint-{run_name}",
+            type="model",
+            metadata={
+                "step": trainer.state.step,
+                "val_loss": trainer.state.last_val_loss,
+            },
+        )
+        artifact.add_file(checkpoint_path)
+        aliases = ["latest"]
+        if is_best:
+            aliases.append("best")
+        self._run.log_artifact(artifact, aliases=aliases)
+
+        print(f"TAP_CHECKPOINT_PATH={checkpoint_path}", flush=True)
+        print(
+            f"TAP_WANDB_ARTIFACT={self._run.entity}/{self._run.project}/checkpoint-{run_name}:latest",
+            flush=True,
+        )
 
     def on_run_end(self, trainer: Any) -> None:
         if not self.enabled or self._run is None or not getattr(trainer, "is_main", True):

@@ -34,7 +34,7 @@ class Callback:
     def on_eval_end(self, trainer: Any, eval_outputs: Optional[dict[str, Any]] = None) -> None:
         pass
 
-    def on_checkpoint_save(self, trainer: Any, checkpoint_path: str) -> None:
+    def on_checkpoint_save(self, trainer: Any, checkpoint_path: str, *, is_best: bool = False) -> None:
         pass
 
     def on_exception(self, trainer: Any, exc: BaseException) -> None:
@@ -88,9 +88,9 @@ class CallbackList:
         for cb in self.callbacks:
             cb.on_eval_end(trainer, eval_outputs)
 
-    def on_checkpoint_save(self, trainer: Any, checkpoint_path: str) -> None:
+    def on_checkpoint_save(self, trainer: Any, checkpoint_path: str, *, is_best: bool = False) -> None:
         for cb in self.callbacks:
-            cb.on_checkpoint_save(trainer, checkpoint_path)
+            cb.on_checkpoint_save(trainer, checkpoint_path, is_best=is_best)
 
     def on_exception(self, trainer: Any, exc: BaseException) -> None:
         for cb in self.callbacks:
