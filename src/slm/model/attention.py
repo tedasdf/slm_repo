@@ -75,10 +75,32 @@ class CausalSelfAttention(nn.Module):
         y = y.transpose(1, 2).contiguous().view(bsz, seq_len, self.num_heads * self.head_dim)
         return self.out_proj(y)
 
+    def count_params(self) -> int:
+        return (
+            self.q_proj.weight.numel()
+            + self.k_proj.weight.numel()
+            + self.v_proj.weight.numel()
+            + self.out_proj.weight.numel()
+        )
+
+    def flops_per_token(self, seq_len: int) -> float:
+        q_term      = 2 * self.model_dim * self.num_heads * self.head_dim
+        k_term      = 2 * self.model_dim * self.num_kv_heads * self.head_dim
+        v_term      = 2 * self.model_dim * self.num_kv_heads * self.head_dim
+        out_term    = 2 * self.num_heads * self.head_dim * self.model_dim
+
+        qk          = 2 * self.num_heads * self.head_dim * seq_len
+        softmax     = seq_len + (seq_len - 1) + seq_len  # per head
+        softmax    *= self.num_heads
+        scores_v    = 2 * self.num_heads * seq_len * self.head_dim
+
+        return q_term + k_term + v_term + out_term + qk + softmax + scores_v
+
+
 class ExclusionSelfAttention(CausalSelfAttention):
     def __init__(self, cfg: ModelConfig) -> None:
-        super.__init__(cfg)
-    
+        super().__init__(cfg)
+
     def forward(self, x: torch.Tensor, **kwargs: object) -> torch.Tensor:
         bsz, seq_len, _ = x.shape
 
@@ -117,6 +139,25 @@ class ExclusionSelfAttention(CausalSelfAttention):
             bsz, seq_len, self.num_heads * self.head_dim
         )
         return self.out_proj(z)
+
+    def flops_per_token(self, seq_len: int) -> float:
+        q_term      = 2 * self.model_dim * self.num_heads * self.head_dim
+        k_term      = 2 * self.model_dim * self.num_kv_heads * self.head_dim
+        v_term      = 2 * self.model_dim * self.num_kv_heads * self.head_dim
+        out_term    = 2 * self.num_heads * self.head_dim * self.model_dim
+
+        # XSA uses full causal attention, not a sliding window
+        qk          = 2 * self.num_heads * self.head_dim * seq_len
+        softmax     = seq_len + (seq_len - 1) + seq_len
+        softmax    *= self.num_heads
+        scores_v    = 2 * self.num_heads * seq_len * self.head_dim
+
+        norm_term = self.head_dim + (self.head_dim - 1) + 1 + self.head_dim  # squares + sum + sqrt + divide
+        excl_term = self.head_dim + self.head_dim - 1 + self.head_dim + self.head_dim
+        norm_excel = (norm_term + excl_term) * self.num_heads
+        return q_term + k_term + v_term + out_term + qk + softmax + scores_v + norm_excel
+
+
 
 class SlidingWindowAttention(CausalSelfAttention):
     def __init__(self, cfg: ModelConfig) -> None:
@@ -165,6 +206,22 @@ class SlidingWindowAttention(CausalSelfAttention):
             bsz, seq_len, self.num_heads * self.head_dim
         )
         return self.out_proj(y)
+
+    def flops_per_token(self, seq_len: int) -> float:
+        q_term      = 2 * self.model_dim * self.num_heads * self.head_dim
+        k_term      = 2 * self.model_dim * self.num_kv_heads * self.head_dim
+        v_term      = 2 * self.model_dim * self.num_kv_heads * self.head_dim
+        out_term    = 2 * self.num_heads * self.head_dim * self.model_dim
+
+        qk          = 2 * self.num_heads * self.head_dim * self.window_size
+        softmax     = self.window_size + (self.window_size - 1) + self.window_size
+        softmax    *= self.num_heads
+        scores_v    = 2 * self.num_heads * self.window_size * self.head_dim
+
+        return q_term + k_term + v_term + out_term + qk + softmax + scores_v
+
+
+
 
 class ResidualAttention():
     def __init__():
