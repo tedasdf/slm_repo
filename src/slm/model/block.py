@@ -40,13 +40,6 @@ class TransformerBlock(nn.Module):
         x = x + self.mlp(self.mlp_norm(x))
         return x
 
-    def count_params(self) -> int:
-        return (
-            self.attn_norm.count_params()
-            + self.attn.count_params()
-            + self.mlp_norm.count_params()
-            + self.mlp.count_params()
-        )
 
     def flops_per_token(self, seq_len: int) -> float:
         return (
