@@ -40,6 +40,22 @@ class TransformerBlock(nn.Module):
         x = x + self.mlp(self.mlp_norm(x))
         return x
 
+    def count_params(self) -> int:
+        return (
+            self.attn_norm.count_params()
+            + self.attn.count_params()
+            + self.mlp_norm.count_params()
+            + self.mlp.count_params()
+        )
+
+    def flops_per_token(self, seq_len: int) -> float:
+        return (
+            self.attn_norm.flops_per_token()
+            + self.attn.flops_per_token(seq_len)
+            + self.mlp_norm.flops_per_token()
+            + self.mlp.flops_per_token()
+        )
+
 
 BLOCK_REGISTRY: dict[str, type[nn.Module]] = {
     "baseline": TransformerBlock,

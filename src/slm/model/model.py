@@ -62,3 +62,22 @@ class TransformerLM(nn.Module):
             out["loss"] = loss
 
         return out
+
+    def count_params(self) -> int:
+        block_params = self.cfg.num_layers * self.blocks[0].count_params()
+        head_params = 0 if self.cfg.tie_embeddings else self.lm_head.weight.numel()
+        return (
+            self.tok_emb.count_params()
+            + block_params
+            + self.final_norm.count_params()
+            + head_params
+        )
+
+    def flops_per_token(self, seq_len: int) -> float:
+        block_flops = self.cfg.num_layers * self.blocks[0].flops_per_token(seq_len)
+        return (
+            self.tok_emb.flops_per_token()
+            + block_flops
+            + self.final_norm.flops_per_token()
+            + self.lm_head.weight.shape[0] * self.lm_head.weight.shape[1] * 2  # lm_head matmul
+        )
