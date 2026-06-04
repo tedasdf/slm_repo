@@ -1,45 +1,15 @@
 from __future__ import annotations
 
-from torch import nn
+import torch.nn as nn
 
-from .block import Block, CausalSelfAttention, MLP, RMSNorm
-from norm import RMSNorm
-from __future__ import annotations
-
-from torch import nn
-
-from .attention import (
-    SlidingWindowCausalSelfAttention,
-    SlidingWindowGQACausalSelfAttention,
-    XSACausalSelfAttention,
-    XSAGQACausalSelfAttention,
-    XSASlidingWindowCausalSelfAttention,
-    XSASlidingWindowGQACausalSelfAttention,
-)
-
-ATTENTION_REGISTRY: dict[str, type[nn.Module]] = {
-    "gqa": CausalSelfAttention,
-    "baseline": CausalSelfAttention,
-    # "swa": SlidingWindowCausalSelfAttention,
-    # "gqa_swa": SlidingWindowGQACausalSelfAttention,
-    # "xsa": XSACausalSelfAttention,
-    # "xsa_gqa": XSAGQACausalSelfAttention,
-    # "xsa_swa": XSASlidingWindowCausalSelfAttention,
-    # "xsa_gqa_swa": XSASlidingWindowGQACausalSelfAttention,
-}
-
-MLP_REGISTRY: dict[str, type[nn.Module]] = {
-    "relu2": MLP,
-    "baseline": MLP,
-}
+from .attention import ATTENTION_REGISTRY
+from .block import BLOCK_REGISTRY
+from .mlp import MLP_REGISTRY
+from .norm import RMSNorm
 
 NORM_REGISTRY: dict[str, type[nn.Module]] = {
     "rmsnorm": RMSNorm,
-    "baseline": RMSNorm,
-}
-
-BLOCK_REGISTRY: dict[str, type[nn.Module]] = {
-    "baseline": Block,
+    "layernorm": nn.LayerNorm,
 }
 
 
