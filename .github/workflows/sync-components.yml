@@ -1,0 +1,41 @@
+name: Sync components manifest
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - src/slm/model/attention.py
+      - src/slm/model/mlp.py
+      - src/slm/model/norm.py
+      - src/slm/model/block.py
+      - src/slm/model/config.py
+      - scripts/generate_components.py
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Regenerate components.py
+        run: python scripts/generate_components.py
+
+      - name: Commit if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add src/slm/model/components.py
+          git diff --cached --quiet && echo "No changes." || (
+            git commit -m "chore: regenerate components.py from registries [skip ci]"
+            git push
+          )
