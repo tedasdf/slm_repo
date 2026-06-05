@@ -47,6 +47,7 @@ class TrainerConfig:
     metric_mode_for_best: str = "min"
 
     num_sanity_val_steps: int = 0
+    z_loss_coeff: float = 0.0
 
     def __post_init__(self) -> None:
         if self.max_steps <= 0:

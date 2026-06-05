@@ -216,9 +216,17 @@ class Trainer:
                     raise ValueError("targets are required when using loss_fn")
                 loss = self.loss_fn(outputs, targets)
 
+        z_loss_coeff = getattr(self.config, "z_loss_coeff", 0.0)
+        if z_loss_coeff > 0.0 and isinstance(outputs, dict) and "logits" in outputs:
+            log_z = torch.logsumexp(outputs["logits"], dim=-1)  # [B, T]
+            z_loss = z_loss_coeff * (log_z ** 2).mean()
+            loss = loss + z_loss
+            self.state.extra["diagnostics/z_loss"] = float(z_loss.detach().item())
+
         self.state.extra["diagnostics/has_nan_or_inf_loss"] = not torch.isfinite(loss)
 
-        return loss, outputs if isinstance(outputs, dict) else {"outputs": outputs}, targets
+        out_dict: dict[str, Any] = outputs if isinstance(outputs, dict) else {"outputs": outputs}
+        return loss, out_dict, targets
 
     def _compute_grad_norm(self) -> float | None:
         total_sq = 0.0

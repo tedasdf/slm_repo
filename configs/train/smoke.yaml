@@ -29,7 +29,7 @@ model:
 optimizer:
   optimizer_type: "adamw"
   lr: 3.0e-4
-  weight_decay: 0.1
+  weight_decay: 1.0e-4
   beta1: 0.9
   beta2: 0.95
   eps: 1.0e-8
@@ -75,6 +75,7 @@ trainer:
   checkpoint_every: 1000
   save_best_checkpoint: false
   num_sanity_val_steps: 2
+  z_loss_coeff: 1.0e-4
 
 data:
   mode: text
