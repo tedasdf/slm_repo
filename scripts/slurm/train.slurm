@@ -41,7 +41,6 @@ echo "Run ID:    ${TAP_RUN_ID:-<not set>}"
 module load miniforge3
 # conda activate is a shell function — needs conda init sourced first
 # shellcheck source=/dev/null
-source "$(conda info --base)/etc/profile.d/conda.sh"
 conda activate slm_ven
 
 # ── repo ──────────────────────────────────────────────────────────────────────
