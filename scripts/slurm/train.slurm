@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=slm-train
 #SBATCH --partition=gpu
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:L40S:1
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=10
@@ -25,16 +25,21 @@ set -eo pipefail
 # Note: -u (unbound variable check) is intentionally omitted — module/conda
 # env scripts reference $SCRATCH and other M3-specific vars without exporting them.
 
-# Provide $SCRATCH fallback so any sourced env script that references it doesn't fail.
 export SCRATCH="${SCRATCH:-/home/slo/vf38_scratch2/sloo0021}"
 
 mkdir -p logs/slurm
+
+# Normalise CONFIG_OVERRIDES_JSON before use.
+# Avoid ${VAR:-{}} — when VAR is set to '{}', bash emits the value then a
+# literal '}' from the expansion syntax, producing '{}}' which breaks json.loads.
+_OVERRIDES="${CONFIG_OVERRIDES_JSON:-}"
+[[ -z "$_OVERRIDES" ]] && _OVERRIDES='{}'
 
 echo "Job ID:    $SLURM_JOB_ID"
 echo "Host:      $(hostname)"
 echo "Started:   $(date)"
 echo "Config:    ${CONFIG_PATH:-configs/train/baseline.yaml}"
-echo "Overrides: ${CONFIG_OVERRIDES_JSON:-{}}"
+echo "Overrides: $_OVERRIDES"
 echo "Run ID:    ${TAP_RUN_ID:-<not set>}"
 
 # ── conda ─────────────────────────────────────────────────────────────────────
@@ -69,6 +74,6 @@ nvidia-smi
 # ── run ───────────────────────────────────────────────────────────────────────
 torchrun --nproc_per_node=1 -m src.slm.main \
     --config_path "${CONFIG_PATH:-configs/train/baseline.yaml}" \
-    --overrides   "${CONFIG_OVERRIDES_JSON:-{}}"
+    --overrides   "$_OVERRIDES"
 
 echo "Finished: $(date)"
