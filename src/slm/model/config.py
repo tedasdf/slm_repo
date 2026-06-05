@@ -33,6 +33,7 @@ class AttentionConfig:
     rope_base: float = 10_000.0
     qk_gain_init: float = 1.0
     window_size: Optional[int] = None
+    qk_norm: bool = False
 
     def __post_init__(self) -> None:
         if self.num_heads <= 0:

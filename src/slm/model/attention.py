@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .config import ModelConfig
+from .norm import RMSNorm
 from .rope import apply_rope, build_rope_cache
 
 
@@ -30,16 +31,29 @@ class CausalSelfAttention(nn.Module):
             raise ValueError("num_heads must be divisible by num_kv_heads")
         self.q_per_kv = self.num_heads // self.num_kv_heads
 
+        # QK-norm: one RMSNorm of size head_dim, shared across all heads
+        if cfg.attention.qk_norm:
+            self.q_norm: RMSNorm | None = RMSNorm(self.head_dim)
+            self.k_norm: RMSNorm | None = RMSNorm(self.head_dim)
+        else:
+            self.q_norm = None
+            self.k_norm = None
+
     def _reshape_q(self, x: torch.Tensor) -> torch.Tensor:
         bsz, seq_len, _ = x.shape
-        q = self.q_proj(x)
-        q = q.view(bsz, seq_len, self.num_heads, self.head_dim)
+        q = self.q_proj(x).view(bsz, seq_len, self.num_heads, self.head_dim)
+        if self.q_norm is not None:
+            q = self.q_norm(q)
         return q.transpose(1, 2)  # [B, H, T, D]
 
     def _reshape_kv(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         bsz, seq_len, _ = x.shape
 
-        k = self.k_proj(x).view(bsz, seq_len, self.num_kv_heads, self.head_dim).transpose(1, 2)
+        k = self.k_proj(x).view(bsz, seq_len, self.num_kv_heads, self.head_dim)
+        if self.k_norm is not None:
+            k = self.k_norm(k)
+        k = k.transpose(1, 2)
+
         v = self.v_proj(x).view(bsz, seq_len, self.num_kv_heads, self.head_dim).transpose(1, 2)
 
         if self.is_gqa:
@@ -76,12 +90,17 @@ class CausalSelfAttention(nn.Module):
         return self.out_proj(y)
 
     def count_params(self) -> int:
-        return (
+        total = (
             self.q_proj.weight.numel()
             + self.k_proj.weight.numel()
             + self.v_proj.weight.numel()
             + self.out_proj.weight.numel()
         )
+        if self.q_norm is not None:
+            total += self.q_norm.count_params()
+        if self.k_norm is not None:
+            total += self.k_norm.count_params()
+        return total
 
     def flops_per_token(self, seq_len: int) -> float:
         q_term      = 2 * self.model_dim * self.num_heads * self.head_dim
@@ -94,7 +113,14 @@ class CausalSelfAttention(nn.Module):
         softmax    *= self.num_heads
         scores_v    = 2 * self.num_heads * seq_len * self.head_dim
 
-        return q_term + k_term + v_term + out_term + qk + softmax + scores_v
+        # QK-norm: one RMSNorm of head_dim applied per head per token
+        qk_norm_flops = 0.0
+        if self.q_norm is not None:
+            qk_norm_flops += self.num_heads * self.q_norm.flops_per_token()
+        if self.k_norm is not None:
+            qk_norm_flops += self.num_kv_heads * self.k_norm.flops_per_token()
+
+        return q_term + k_term + v_term + out_term + qk + softmax + scores_v + qk_norm_flops
 
 
 class ExclusionSelfAttention(CausalSelfAttention):
