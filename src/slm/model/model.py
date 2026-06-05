@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -26,14 +28,21 @@ class TransformerLM(nn.Module):
         self._reset_parameters()
 
     def _reset_parameters(self) -> None:
+        embed_std = 1.0 / math.sqrt(self.cfg.model_dim)  # N(0, 1/√d) — paper spec
         for module in self.modules():
-            if isinstance(module, nn.Linear):
-                nn.init.normal_(module.weight, mean=0.0, std=self.cfg.init.init_std)
+            if isinstance(module, nn.Embedding):
+                nn.init.normal_(module.weight, mean=0.0, std=embed_std)
+            elif isinstance(module, nn.Linear):
+                if self.cfg.init.use_fan_in_init:
+                    # truncated-normal, std = 1/√fan_in, truncated at ±2σ
+                    fan_in = module.weight.shape[1]
+                    std = 1.0 / math.sqrt(fan_in)
+                    nn.init.trunc_normal_(module.weight, mean=0.0, std=std,
+                                         a=-2 * std, b=2 * std)
+                else:
+                    nn.init.normal_(module.weight, mean=0.0, std=self.cfg.init.init_std)
                 if module.bias is not None:
                     nn.init.zeros_(module.bias)
-            elif isinstance(module, nn.Embedding):
-                std = self.cfg.init.tied_embed_init_std or self.cfg.init.init_std
-                nn.init.normal_(module.weight, mean=0.0, std=std)
 
     def forward(
         self,

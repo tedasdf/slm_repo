@@ -76,8 +76,11 @@ class MLPConfig:
 
 @dataclass
 class InitConfig:
-    init_std: float = 0.02
-    tied_embed_init_std: Optional[float] = None
+    # If True: linears use truncated-normal with std=1/√fan_in (paper spec).
+    # If False: all weights use init_std (GPT-2 style fixed std).
+    use_fan_in_init: bool = True
+    init_std: float = 0.02          # used only when use_fan_in_init=False
+    tied_embed_init_std: Optional[float] = None  # unused when tie_embeddings=False
 
     def __post_init__(self) -> None:
         if self.init_std <= 0:

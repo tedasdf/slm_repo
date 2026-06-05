@@ -5,7 +5,7 @@ model:
   model_dim: 256
   block_type: "baseline"
   norm_type: "rmsnorm"
-  tie_embeddings: true
+  tie_embeddings: false
   logit_softcap: null
 
   attention:

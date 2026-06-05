@@ -3,7 +3,7 @@ model:
   max_seq_len: 1024
   num_layers: 8
   model_dim: 512
-  tie_embeddings: true
+  tie_embeddings: false
 
   attention:
     attention_type: "baseline"
