@@ -1,6 +1,6 @@
 model:
   vocab_size: 32000
-  max_seq_len: 1024
+  max_seq_len: 512
   num_layers: 8
   model_dim: 512
   tie_embeddings: false
@@ -14,7 +14,7 @@ model:
     qk_gain_init: 1.0
 
   mlp:
-    mlp_type: "swiglu"
+    mlp_type: "gelu"
     mlp_mult: 4.0
 
   init:
@@ -48,10 +48,10 @@ trainer:
 
   train_tokenizer_before_fit: true
   text_key: "text"
-  max_seq_len: 1024
+  max_seq_len: 512
 
   max_steps: 10000
-  grad_accum_steps: 4
+  grad_accum_steps: 8
   clip_grad_norm: 1.0
 
   train_log_every: 100
@@ -84,8 +84,8 @@ data:
   shuffle: true
   shuffle_buffer_size: 10000
 
-  seq_len: 1024
-  batch_size: 8
+  seq_len: 512
+  batch_size: 32
   num_workers: 2
   pin_memory: true
   drop_last: true
