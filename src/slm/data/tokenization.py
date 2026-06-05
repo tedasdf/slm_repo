@@ -346,12 +346,14 @@ def iter_huggingface_examples(
     if dataset_cfg.source_type != "huggingface":
         raise ValueError(f"Expected source_type='huggingface', got {dataset_cfg.source_type}")
 
+    revision = getattr(dataset_cfg, "hf_revision", None)
     ds = load_dataset(
         dataset_cfg.dataset_name,
         name=dataset_cfg.dataset_config_name,
         split=split_name,
         streaming=dataset_cfg.streaming,
         cache_dir=dataset_cfg.cache_dir,
+        revision=revision,
     )
     if dataset_cfg.shuffle:
         if dataset_cfg.streaming:
@@ -388,12 +390,14 @@ def iter_examples(
         raise ValueError(f"Unsupported source_type: {dataset_cfg.source_type}")
     
     os.environ["DATA_DIR"] = 'dolma'
-    
+
+    revision = getattr(dataset_cfg, "hf_revision", None)
     ds = load_dataset(
         dataset_cfg.dataset_name,
         split=split_name,
         streaming=dataset_cfg.streaming,
         cache_dir=dataset_cfg.cache_dir,
+        revision=revision,
     )
 
     if dataset_cfg.shuffle:

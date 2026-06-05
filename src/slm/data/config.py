@@ -26,6 +26,8 @@ class DatasetConfig:
     # dataset loading behavior
     cache_dir: Optional[str] = None
     streaming: bool = False
+    # Pin the HF dataset commit/tag for reproducibility; recorded as data_ref.
+    hf_revision: Optional[str] = None
 
     # optional caps on raw samples loaded
     max_train_samples: Optional[int] = None
@@ -119,6 +121,10 @@ class DataLoaderConfig:
     seed: int = 42
     shuffle: bool = True
     shuffle_buffer_size: int = 10000
+    # Pin the HF dataset commit/tag; passed as revision= to load_dataset and
+    # recorded in the run config so W&B captures it as data_ref.
+    hf_revision: Optional[str] = None
+    data_ref: Optional[str] = None  # set automatically from hf_revision at load time
 
     ray_num_cpus: int = 4
     ray_read_concurrency: int = 4

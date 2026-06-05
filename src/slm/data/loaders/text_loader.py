@@ -65,6 +65,7 @@ def _as_dataset_view(loader_cfg: DataLoaderConfig) -> Any:
         dataset_config_name=getattr(loader_cfg, "dataset_config_name", None),
         cache_dir=getattr(loader_cfg, "cache_dir", None),
         streaming=getattr(loader_cfg, "streaming", True),
+        hf_revision=getattr(loader_cfg, "hf_revision", None),
     )
 
 
