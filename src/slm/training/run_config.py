@@ -24,6 +24,8 @@ class TrainerConfig:
     max_steps: int = 10_000
     max_epochs: Optional[int] = None
 
+    seed: int = 42
+
     grad_accum_steps: int = 1
     clip_grad_norm: Optional[float] = 1.0
 

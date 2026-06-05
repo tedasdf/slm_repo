@@ -10,6 +10,7 @@ from src.slm.data.tokenizer import BPETokenizer
 from src.slm.model import ModelConfig, TransformerLM
 from .logging import PrintMetricsCallback, WandBCallback
 from .trainer import Trainer
+from ..utils.seed import seed_everything
 
 from src.slm.data.config import DataLoaderConfig
 from src.slm.data.loaders.text_loader import build_text_dataloaders
@@ -165,6 +166,9 @@ def assemble_training_components(
     is_distributed: bool = False,
     is_main: bool = True,
 ) -> dict[str, Any]:
+    seed = getattr(run_cfg.trainer, "seed", 42)
+    seed_everything(seed, rank=rank)
+
     model = build_model(run_cfg.model)
 
     train_loader, val_loader = build_dataloaders(

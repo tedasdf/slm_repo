@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.distributed import DistributedSampler
 
 from ..config import DataLoaderConfig
+from ...utils.seed import make_worker_init_fn
 
 
 def infer_token_dtype(bin_path: str | Path) -> np.dtype:
@@ -85,6 +86,10 @@ def _build_token_torch_dataloaders(
         stride=data_cfg.stride,
     )
 
+    seed = getattr(data_cfg, "seed", 42)
+    generator = torch.Generator()
+    generator.manual_seed(seed)
+
     train_sampler = None
     if is_distributed:
         train_sampler = DistributedSampler(
@@ -93,6 +98,7 @@ def _build_token_torch_dataloaders(
             rank=rank,
             shuffle=data_cfg.shuffle_train,
             drop_last=data_cfg.drop_last,
+            seed=seed,
         )
 
     train_loader = DataLoader(
@@ -103,6 +109,8 @@ def _build_token_torch_dataloaders(
         num_workers=data_cfg.num_workers,
         pin_memory=data_cfg.pin_memory,
         drop_last=data_cfg.drop_last,
+        generator=generator,
+        worker_init_fn=make_worker_init_fn(seed) if data_cfg.num_workers > 0 else None,
     )
 
     val_loader = None
