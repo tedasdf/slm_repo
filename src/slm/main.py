@@ -21,10 +21,19 @@ from .training.run_config import RunConfig
 from .training.trainer import Trainer
 
 
-def load_config(config_path: str | Path) -> RunConfig:
+def load_config(config_path: str | Path, overrides: str = "{}") -> RunConfig:
+    """Load and merge config. overrides is a JSON string applied last.
+
+    Example override: '{"trainer": {"lr": 3e-3, "max_steps": 500}}'
+    """
+    import json
     schema = OmegaConf.structured(RunConfig)
     loaded_cfg = OmegaConf.load(str(config_path))
     merged = OmegaConf.merge(schema, loaded_cfg)
+
+    overrides_dict = json.loads(overrides)
+    if overrides_dict:
+        merged = OmegaConf.merge(merged, OmegaConf.create(overrides_dict))
 
     missing = OmegaConf.missing_keys(merged)
     if missing:
@@ -58,10 +67,11 @@ def load_experiment_config(
 def main(
     config_path: str,
     *,
+    overrides: str = "{}",
     experiment: bool = False,
     experiment_path: str | None = None,
 ) -> None:
-    cfg = load_config(config_path)
+    cfg = load_config(config_path, overrides=overrides)
 
     if experiment:
         if experiment_path is None:
@@ -127,12 +137,15 @@ def main(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--config_path", type=str, required=True)
+    parser.add_argument("--overrides", type=str, default="{}",
+                        help='JSON string of config overrides, e.g. \'{"trainer":{"lr":3e-3}}\'')
     parser.add_argument("--experiment_path", type=str, default=None)
     parser.add_argument("--experiment", action="store_true")
     args = parser.parse_args()
 
     main(
         config_path=args.config_path,
+        overrides=args.overrides,
         experiment=args.experiment,
         experiment_path=args.experiment_path,
     )
