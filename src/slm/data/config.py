@@ -109,8 +109,12 @@ class DataLoaderConfig:
     train_bin_path: Optional[str] = None
     val_bin_path: Optional[str] = None
 
-    # text mode
+    # text mode — huggingface streaming
     source_type: Optional[str] = None
+    dataset_name: Optional[str] = None
+    dataset_config_name: Optional[str] = None
+    streaming: bool = True
+    cache_dir: Optional[str] = None
     train_paths: Optional[str] = None
     val_paths: Optional[str] = None
     text_fields: list[str] = field(default_factory=lambda: ["text"])
