@@ -62,14 +62,36 @@ def build_scheduler(
         return None
 
     scheduler_type = scheduler_type.lower()
+    eta_min = getattr(scheduler_cfg, "eta_min", 1e-5)
+
+    if scheduler_type == "cosine_with_warmup":
+        warmup_steps = int(getattr(scheduler_cfg, "warmup_steps", 5_000))
+        t_max = int(getattr(scheduler_cfg, "t_max", 100_000))
+
+        if warmup_steps >= t_max:
+            raise ValueError(
+                f"warmup_steps={warmup_steps} must be < t_max={t_max}"
+            )
+
+        warmup = torch.optim.lr_scheduler.LinearLR(
+            optimizer,
+            start_factor=1 / max(warmup_steps, 1),
+            end_factor=1.0,
+            total_iters=warmup_steps,
+        )
+        cosine = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,
+            T_max=t_max - warmup_steps,
+            eta_min=eta_min,
+        )
+        return torch.optim.lr_scheduler.SequentialLR(
+            optimizer,
+            schedulers=[warmup, cosine],
+            milestones=[warmup_steps],
+        )
 
     if scheduler_type == "cosine":
-        t_max = getattr(scheduler_cfg, "t_max", None)
-        eta_min = getattr(scheduler_cfg, "eta_min", 0.0)
-
-        if t_max is None:
-            raise ValueError("scheduler_type='cosine' requires scheduler_cfg.t_max")
-
+        t_max = int(getattr(scheduler_cfg, "t_max", 100_000))
         return torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer,
             T_max=t_max,
@@ -81,7 +103,7 @@ def build_scheduler(
 
     raise ValueError(
         f"Unsupported scheduler_type={scheduler_type!r}. "
-        f"Currently supported: ['cosine', 'constant']"
+        f"Supported: ['cosine_with_warmup', 'cosine', 'constant']"
     )
 
 

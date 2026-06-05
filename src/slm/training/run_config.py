@@ -80,9 +80,10 @@ class OptimizerConfig:
 
 @dataclass
 class SchedulerConfig:
-    scheduler_type: str = "constant"   # "constant" | "cosine"
-    t_max: Optional[int] = None
-    eta_min: float = 0.0
+    scheduler_type: str = "cosine_with_warmup"  # "constant" | "cosine" | "cosine_with_warmup"
+    warmup_steps: int = 5_000
+    t_max: int = 100_000
+    eta_min: float = 1e-5
 
 @dataclass
 class LoggingConfig:

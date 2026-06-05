@@ -29,9 +29,10 @@ optimizer:
   eps: 1.0e-8
 
 scheduler:
-  scheduler_type: "cosine"
-  t_max: 10000
-  eta_min: 3.0e-5
+  scheduler_type: "cosine_with_warmup"
+  warmup_steps: 5000
+  t_max: 100000
+  eta_min: 1.0e-5
 
 logging:
   use_print_callback: true
