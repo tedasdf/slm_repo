@@ -113,6 +113,8 @@ class DataLoaderConfig:
     source_type: Optional[str] = None
     dataset_name: Optional[str] = None
     dataset_config_name: Optional[str] = None
+    train_split_name: str = "train"
+    val_split_name: Optional[str] = None
     streaming: bool = True
     cache_dir: Optional[str] = None
     train_paths: Optional[str] = None
