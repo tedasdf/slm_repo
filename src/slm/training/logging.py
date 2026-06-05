@@ -100,7 +100,8 @@ class WandBCallback(Callback):
             tags=self.tags,
         )
         if self._run is not None:
-            print(f"TAP_WANDB_RUN_ID={self._run.id}", flush=True)
+            _path = f"{self._run.entity}/{self._run.project}/{self._run.id}"
+            print(f"TAP_WANDB_RUN_ID={_path}", flush=True)
 
     def on_step_end(self, trainer: Any, step_outputs: Optional[dict[str, Any]] = None) -> None:
         if not self.enabled or self._wandb is None or not getattr(trainer, "is_main", True):
