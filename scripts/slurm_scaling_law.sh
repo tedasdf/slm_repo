@@ -23,7 +23,6 @@ echo "Started:   $(date)"
 # batch scripts unless you source the init script explicitly first.
 module load miniforge3
 # shellcheck source=/dev/null
-source "$(conda info --base)/etc/profile.d/conda.sh"
 conda activate slm_ven
 
 # ── repo ───────────────────────────────────────────────────────────────────────
