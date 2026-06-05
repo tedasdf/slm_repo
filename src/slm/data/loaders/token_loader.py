@@ -29,6 +29,17 @@ def infer_token_dtype(bin_path: str | Path) -> np.dtype:
 
 
 class TokenBlockDataset(Dataset):
+    """Token-block dataset backed by a memory-mapped binary file.
+
+    Memory model: np.memmap maps the file into virtual address space —
+    pages are loaded on-demand by the OS, NOT all at once into RAM.
+    A 20 GB bin file (e.g. 10B uint16 tokens) will only occupy as much
+    physical RAM as the OS keeps hot in the page cache. There is no
+    per-process memory limit from this class itself; the practical limit
+    is the size of the bin file vs available page-cache headroom.
+    Deferred: sharded multi-file loading (not blocking for current scale).
+    """
+
     def __init__(
         self,
         bin_path: str | Path,
