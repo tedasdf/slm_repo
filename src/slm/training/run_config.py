@@ -34,6 +34,8 @@ class TrainerConfig:
 
     save_checkpoints: bool = True
     checkpoint_every: Optional[int] = 1000
+    checkpoint_dir: str = "artifacts/checkpoints"
+    resume_from_checkpoint: Optional[str] = None
 
     max_eval_batches: Optional[int] = None
 

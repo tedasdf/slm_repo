@@ -404,6 +404,7 @@ class Trainer:
             "model": raw_model.state_dict(),
             "optimizer": self.optimizer.state_dict(),
             "scheduler": self.scheduler.state_dict() if self.scheduler is not None else None,
+            "grad_scaler": self.grad_scaler.state_dict(),
             "state": {
                 "step": self.state.step,
                 "epoch": self.state.epoch,
@@ -419,7 +420,43 @@ class Trainer:
         torch.save(ckpt, path)
         self.callbacks.on_checkpoint_save(self, str(path))
 
+    def load_checkpoint(self, path: str | Path) -> None:
+        """Restore model, optimizer, scheduler, scaler, and train state.
+
+        Data order within a resumed epoch is not guaranteed to match the
+        original run — the DataLoader restarts from the beginning of the
+        current epoch. The step counter ensures training stops at the
+        correct total step regardless.
+        """
+        path = Path(path)
+        ckpt = torch.load(path, map_location=self.device, weights_only=False)
+
+        raw_model = self.model.module if hasattr(self.model, "module") else self.model
+        raw_model.load_state_dict(ckpt["model"])
+        self.optimizer.load_state_dict(ckpt["optimizer"])
+
+        if ckpt.get("scheduler") is not None and self.scheduler is not None:
+            self.scheduler.load_state_dict(ckpt["scheduler"])
+
+        if ckpt.get("grad_scaler") is not None:
+            self.grad_scaler.load_state_dict(ckpt["grad_scaler"])
+
+        saved = ckpt.get("state", {})
+        self.state.step                = saved.get("step", 0)
+        self.state.epoch               = saved.get("epoch", 0)
+        self.state.train_tokens_seen   = saved.get("train_tokens_seen", 0)
+        self.state.train_samples_seen  = saved.get("train_samples_seen", 0)
+        self.state.best_val_loss       = saved.get("best_val_loss", None)
+        self.state.last_train_loss     = saved.get("last_train_loss", None)
+        self.state.last_val_loss       = saved.get("last_val_loss", None)
+        self.state.extra.update(saved.get("extra", {}))
+
+        print(f"[checkpoint] resumed from {path} at step={self.state.step}")
+
     def train(self) -> TrainState:
+        if self.config.resume_from_checkpoint:
+            self.load_checkpoint(self.config.resume_from_checkpoint)
+
         self.state.started_at = time.time()
         self.model.train()
         self.optimizer.zero_grad(set_to_none=True)
@@ -480,13 +517,23 @@ class Trainer:
                         if self.val_loader is not None and self.state.step % self.config.eval_every == 0:
                             eval_outputs = self.validate()
                             self.callbacks.on_step_end(self, eval_outputs)
+                            if (
+                                self.config.save_checkpoints
+                                and self.config.save_best_checkpoint
+                                and eval_outputs.get("is_best")
+                            ):
+                                self.save_checkpoint(
+                                    Path(self.config.checkpoint_dir) / "best.pt"
+                                )
 
                         if (
                             self.config.save_checkpoints is True
+                            and self.config.checkpoint_every is not None
                             and self.state.step % self.config.checkpoint_every == 0
                         ):
-                            ckpt_path = Path("artifacts/checkpoints") / f"step_{self.state.step}.pt"
-                            self.save_checkpoint(ckpt_path)
+                            ckpt_dir = Path(self.config.checkpoint_dir)
+                            self.save_checkpoint(ckpt_dir / f"step_{self.state.step}.pt")
+                            self.save_checkpoint(ckpt_dir / "last.pt")
 
                 self.callbacks.on_epoch_end(self)
 
