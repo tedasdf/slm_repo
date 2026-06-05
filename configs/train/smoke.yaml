@@ -1,24 +1,30 @@
 model:
   vocab_size: 16000
-  max_seq_len: 512
+  max_seq_len: 1024
   num_layers: 4
   model_dim: 256
   block_type: "baseline"
   norm_type: "rmsnorm"
   tie_embeddings: true
+  logit_softcap: null
 
   attention:
     attention_type: "baseline"
     num_heads: 4
     num_kv_heads: 4
+    head_dim: null
     rope_base: 10000.0
+    qk_gain_init: 1.0
+    window_size: null
 
   mlp:
     mlp_type: "swiglu"
+    hidden_dim: null
     mlp_mult: 4.0
 
   init:
     init_std: 0.02
+    tied_embed_init_std: null
 
 optimizer:
   optimizer_type: "adamw"
@@ -30,32 +36,39 @@ optimizer:
 
 logging:
   use_print_callback: true
-  use_wandb: false
+  use_wandb: true
   wandb_project: "slm-runs"
   wandb_run_name: "smoke"
   wandb_tags: ["smoke", "fineweb-edu"]
 
 trainer:
-  device: "cuda"
-  precision: "bf16"
-  seed: 42
 
+  seed: 42
   train_tokenizer_before_fit: true
   text_key: "text"
+  device: "cuda"
+  precision: "bf16"
+  
+  target_train_tokens: null
   max_seq_len: 512
 
   max_steps: 100
+  max_epochs: null
+  
   grad_accum_steps: 1
   clip_grad_norm: 1.0
 
-  train_log_every: 10
-  eval_every: 50
-  max_eval_batches: 10
+  train_log_every: 100
+  eval_every: 100
+  max_eval_batches: 50
 
-  save_checkpoints: false
-  checkpoint_every: 100
+  compile_model: false
+  enable_anomaly_detection: false
+
+  save_checkpoints: true
+  checkpoint_every: 1000
   save_best_checkpoint: false
-  num_sanity_val_steps: 0
+  num_sanity_val_steps: 2
 
 data:
   mode: text
@@ -63,17 +76,20 @@ data:
   source_type: huggingface
   dataset_name: HuggingFaceFW/fineweb-edu
   dataset_config_name: sample-10BT
+  train_split_name: train 
+  val_split_name: null
   streaming: true
   text_fields: ["text"]
 
-  max_train_samples: 5000
-  max_val_samples: 500
   val_fraction: 0.05
   split_seed: 42
   seed: 42
   shuffle: true
   shuffle_buffer_size: 1000
-
+  max_train_samples: 5000
+  max_val_samples: 50
+  
+  
   seq_len: 512
   batch_size: 4
   num_workers: 0
