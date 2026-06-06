@@ -171,6 +171,8 @@ def build_callbacks(
             WandBCallback(
                 project=getattr(logging_cfg, "wandb_project", "slm-runs"),
                 name=getattr(logging_cfg, "wandb_run_name", None),
+                entity=getattr(logging_cfg, "wandb_entity", None),
+                run_id=getattr(logging_cfg, "wandb_run_id", None),
                 config=getattr(logging_cfg, "wandb_config", None),
                 tags=getattr(logging_cfg, "wandb_tags", None),
                 enabled=enabled,

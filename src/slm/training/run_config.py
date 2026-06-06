@@ -92,6 +92,8 @@ class LoggingConfig:
     use_wandb: bool = False
     wandb_project: str = "slm-runs"
     wandb_run_name: Optional[str] = None
+    wandb_entity: Optional[str] = None
+    wandb_run_id: Optional[str] = None
     wandb_tags: list[str] = field(default_factory=list)
     wandb_config: Optional[dict] = None
 

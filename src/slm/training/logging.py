@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import os
 from typing import Any, Optional
 
 from .callbacks import Callback
@@ -73,12 +74,16 @@ class WandBCallback(Callback):
         self,
         project: str,
         name: str | None = None,
+        entity: str | None = None,
+        run_id: str | None = None,
         config: dict[str, Any] | None = None,
         tags: list[str] | None = None,
         enabled: bool = True,
     ) -> None:
         self.project = project
         self.name = name
+        self.entity = entity
+        self.run_id = run_id
         self.config = config or {}
         self.tags = tags or []
         self.enabled = enabled
@@ -92,12 +97,21 @@ class WandBCallback(Callback):
 
         import wandb
 
+        # Env vars from TAP (WANDB_PROJECT, WANDB_ENTITY, WANDB_RUN_ID) take
+        # priority over config values so TAP can route runs to the right project.
+        project = os.environ.get("WANDB_PROJECT") or self.project
+        entity  = os.environ.get("WANDB_ENTITY")  or self.entity or None
+        run_id  = os.environ.get("WANDB_RUN_ID")  or self.run_id or None
+
         self._wandb = wandb
         self._run = wandb.init(
-            project=self.project,
+            project=project,
+            entity=entity,
+            id=run_id,
             name=self.name,
             config=self.config,
             tags=self.tags,
+            resume="allow" if run_id else None,
         )
         if self._run is not None:
             _path = f"{self._run.entity}/{self._run.project}/{self._run.id}"
