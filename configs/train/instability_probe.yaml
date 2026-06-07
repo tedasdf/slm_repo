@@ -22,6 +22,8 @@ model:
   num_layers: 4
   model_dim: 256
   norm_type: "rmsnorm"
+  norm_eps: 1.0e-6
+  use_bias: false
   tie_embeddings: false
 
   attention:
@@ -69,7 +71,7 @@ trainer:
   max_seq_len: 512
 
   max_steps: 2000
-  grad_accum_steps: 1
+  grad_accum_steps: 32  # 8 * 32 = 256 effective batch size (paper default)
   clip_grad_norm: 1.0
 
   train_log_every: 1      # log every step — catch spikes, don't miss them
@@ -81,7 +83,9 @@ trainer:
   num_sanity_val_steps: 0
 
   enable_anomaly_detection: true   # pinpoints the exact op that produces NaN/Inf
-  z_loss_coeff: 0.0        # toggle: 1e-4 to test z-loss stabilisation
+  z_loss_coeff: 1e-4        # toggle: 1e-4 to test z-loss stabilisation
+  independent_weight_decay: 1.0e-4
+
 
 data:
   mode: text

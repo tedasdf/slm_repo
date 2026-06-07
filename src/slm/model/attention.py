@@ -21,10 +21,11 @@ class CausalSelfAttention(nn.Module):
         self.head_dim = cfg.head_dim
         self.num_kv_heads = cfg.num_kv_heads
 
-        self.q_proj = nn.Linear(self.model_dim, self.num_heads * self.head_dim, bias=False)
-        self.k_proj = nn.Linear(self.model_dim, self.num_kv_heads * self.head_dim, bias=False)
-        self.v_proj = nn.Linear(self.model_dim, self.num_kv_heads * self.head_dim, bias=False)
-        self.out_proj = nn.Linear(self.num_heads * self.head_dim, self.model_dim, bias=False)
+        bias = cfg.use_bias
+        self.q_proj = nn.Linear(self.model_dim, self.num_heads * self.head_dim, bias=bias)
+        self.k_proj = nn.Linear(self.model_dim, self.num_kv_heads * self.head_dim, bias=bias)
+        self.v_proj = nn.Linear(self.model_dim, self.num_kv_heads * self.head_dim, bias=bias)
+        self.out_proj = nn.Linear(self.num_heads * self.head_dim, self.model_dim, bias=bias)
 
         self.is_gqa = self.num_kv_heads != self.num_heads
         if self.num_heads % self.num_kv_heads != 0:
@@ -33,8 +34,8 @@ class CausalSelfAttention(nn.Module):
 
         # QK-norm: one RMSNorm of size head_dim, shared across all heads
         if cfg.attention.qk_norm:
-            self.q_norm: RMSNorm | None = RMSNorm(self.head_dim)
-            self.k_norm: RMSNorm | None = RMSNorm(self.head_dim)
+            self.q_norm: RMSNorm | None = RMSNorm(self.head_dim, eps=cfg.norm_eps)
+            self.k_norm: RMSNorm | None = RMSNorm(self.head_dim, eps=cfg.norm_eps)
         else:
             self.q_norm = None
             self.k_norm = None
@@ -90,12 +91,9 @@ class CausalSelfAttention(nn.Module):
         return self.out_proj(y)
 
     def count_params(self) -> int:
-        total = (
-            self.q_proj.weight.numel()
-            + self.k_proj.weight.numel()
-            + self.v_proj.weight.numel()
-            + self.out_proj.weight.numel()
-        )
+        projs = [self.q_proj, self.k_proj, self.v_proj, self.out_proj]
+        total = sum(p.weight.numel() for p in projs)
+        total += sum(p.bias.numel() for p in projs if p.bias is not None)
         if self.q_norm is not None:
             total += self.q_norm.count_params()
         if self.k_norm is not None:

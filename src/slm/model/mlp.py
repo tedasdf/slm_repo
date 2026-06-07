@@ -12,9 +12,9 @@ class GELUMLP(nn.Module):
         super().__init__()
         self.model_dim = cfg.model_dim
         self.hidden_dim = cfg.hidden_dim
-        
-        self.fc_in = nn.Linear(cfg.model_dim, cfg.hidden_dim, bias=False)
-        self.fc_out = nn.Linear(cfg.hidden_dim, cfg.model_dim, bias=False)
+        bias = cfg.use_bias
+        self.fc_in = nn.Linear(cfg.model_dim, cfg.hidden_dim, bias=bias)
+        self.fc_out = nn.Linear(cfg.hidden_dim, cfg.model_dim, bias=bias)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.fc_out(F.gelu(self.fc_in(x)))
@@ -33,8 +33,9 @@ class ReLU2MLP(nn.Module):
         super().__init__()
         self.model_dim = cfg.model_dim
         self.hidden_dim = cfg.hidden_dim
-        self.fc_in = nn.Linear(cfg.model_dim, cfg.hidden_dim, bias=False)
-        self.fc_out = nn.Linear(cfg.hidden_dim, cfg.model_dim, bias=False)
+        bias = cfg.use_bias
+        self.fc_in = nn.Linear(cfg.model_dim, cfg.hidden_dim, bias=bias)
+        self.fc_out = nn.Linear(cfg.hidden_dim, cfg.model_dim, bias=bias)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         h = self.fc_in(x)
@@ -56,9 +57,10 @@ class SwiGLUMLP(nn.Module):
         super().__init__()
         self.model_dim = cfg.model_dim
         self.hidden_dim = cfg.hidden_dim
-        self.fc_gate = nn.Linear(cfg.model_dim, cfg.hidden_dim, bias=False)
-        self.fc_value = nn.Linear(cfg.model_dim, cfg.hidden_dim, bias=False)
-        self.fc_out = nn.Linear(cfg.hidden_dim, cfg.model_dim, bias=False)
+        bias = cfg.use_bias
+        self.fc_gate = nn.Linear(cfg.model_dim, cfg.hidden_dim, bias=bias)
+        self.fc_value = nn.Linear(cfg.model_dim, cfg.hidden_dim, bias=bias)
+        self.fc_out = nn.Linear(cfg.hidden_dim, cfg.model_dim, bias=bias)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         gate = F.silu(self.fc_gate(x))

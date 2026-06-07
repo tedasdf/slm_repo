@@ -29,10 +29,10 @@ class TransformerBlock(nn.Module):
         super().__init__()
         self.cfg = cfg
 
-        self.attn_norm = build_norm(cfg.norm_type, cfg.model_dim)
+        self.attn_norm = build_norm(cfg.norm_type, cfg.model_dim, cfg.norm_eps)
         self.attn = build_attention(cfg)
 
-        self.mlp_norm = build_norm(cfg.norm_type, cfg.model_dim)
+        self.mlp_norm = build_norm(cfg.norm_type, cfg.model_dim, cfg.norm_eps)
         self.mlp = build_mlp(cfg)
 
     def forward(self, x: torch.Tensor, **attn_kwargs: Any) -> torch.Tensor:

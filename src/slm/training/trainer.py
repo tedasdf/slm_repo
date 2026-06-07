@@ -18,6 +18,15 @@ from .state import TrainState
 from ..data.tokenizer import BPETokenizer
 from ..data.tokenization import maybe_tokenize_batch, fit_or_load_tokenizer_from_loader
 
+def _apply_independent_weight_decay(model: nn.Module, weight_decay: float) -> None:
+    with torch.no_grad():
+        for name, p in model.named_parameters():
+            if not p.requires_grad:
+                continue
+            if p.ndim >= 2:
+                p.mul_(1.0 - weight_decay)
+
+
 def move_to_device(batch: Any, device: torch.device) -> Any:
     if torch.is_tensor(batch):
         return batch.to(device, non_blocking=True)
@@ -343,6 +352,9 @@ class Trainer:
             self.grad_scaler.update()
         else:
             self.optimizer.step()
+
+        if self.config.independent_weight_decay is not None:
+            _apply_independent_weight_decay(self.model, self.config.independent_weight_decay)
 
         self.optimizer.zero_grad(set_to_none=True)
 

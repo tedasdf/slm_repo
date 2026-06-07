@@ -19,8 +19,8 @@ class TransformerLM(nn.Module):
 
         self.tok_emb = TokenEmbedding(cfg)
         self.blocks = nn.ModuleList([build_block(cfg) for _ in range(cfg.num_layers)])
-        self.final_norm = build_norm(cfg.norm_type, cfg.model_dim)
-        self.lm_head = nn.Linear(cfg.model_dim, cfg.vocab_size, bias=False)
+        self.final_norm = build_norm(cfg.norm_type, cfg.model_dim, cfg.norm_eps)
+        self.lm_head = nn.Linear(cfg.model_dim, cfg.vocab_size, bias=cfg.use_bias)
 
         if cfg.tie_embeddings:
             self.lm_head.weight = self.tok_emb.embedding.weight
@@ -73,6 +73,7 @@ class TransformerLM(nn.Module):
         return out
 
     def count_params(self) -> int:
+        """Total parameter count including embedding and lm_head."""
         block_params = self.cfg.num_layers * self.blocks[0].count_params()
         head_params = 0 if self.cfg.tie_embeddings else self.lm_head.weight.numel()
         return (
@@ -80,6 +81,13 @@ class TransformerLM(nn.Module):
             + block_params
             + self.final_norm.count_params()
             + head_params
+        )
+
+    def count_core_params(self) -> int:
+        """Parameter count excluding embedding and lm_head (Kaplan et al. convention)."""
+        return (
+            self.cfg.num_layers * self.blocks[0].count_params()
+            + self.final_norm.count_params()
         )
 
     def flops_per_token(self, seq_len: int) -> float:

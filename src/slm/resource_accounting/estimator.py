@@ -14,7 +14,8 @@ class ResourceEstimate:
     """All preflight estimates in one place."""
 
     # ── Model scale ───────────────────────────────────────────────────────────
-    num_params: int | None = None
+    num_params: int | None = None          # total (incl. embedding + head)
+    num_core_params: int | None = None     # excl. embedding + head (Kaplan et al.)
     param_mem_gb: float | None = None
 
     # ── Per-step compute ──────────────────────────────────────────────────────
@@ -103,6 +104,7 @@ class ResourceEstimator:
 
         try:
             est.num_params = self.count_params()
+            est.num_core_params = self.model.count_core_params()
         except NotImplementedError:
             pass
 

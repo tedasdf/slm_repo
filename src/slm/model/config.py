@@ -100,6 +100,8 @@ class ModelConfig:
 
     block_type: str = "baseline"
     norm_type: str = "rmsnorm"
+    norm_eps: float = 1e-6
+    use_bias: bool = False
     tie_embeddings: bool = True
     logit_softcap: Optional[float] = None
 
