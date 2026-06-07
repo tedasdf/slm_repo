@@ -16,7 +16,7 @@ from src.slm.data.config import DataLoaderConfig
 from src.slm.data.loaders.text_loader import build_text_dataloaders
 from src.slm.data.loaders.token_loader import build_token_dataloaders
 
-def build_model(model_cfg: ModelConfig) -> nn.Module:
+def build_model(model_cfg: ModelConfig, precision: str = "bf16") -> nn.Module:
     from torch.backends.cuda import (
         enable_cudnn_sdp,
         enable_flash_sdp,
@@ -24,10 +24,11 @@ def build_model(model_cfg: ModelConfig) -> nn.Module:
         enable_mem_efficient_sdp,
     )
 
+    half_precision = precision in ("fp16", "bf16")
     enable_cudnn_sdp(False)
-    enable_flash_sdp(True)
+    enable_flash_sdp(half_precision)        # flash requires fp16/bf16
     enable_mem_efficient_sdp(False)
-    enable_math_sdp(False)
+    enable_math_sdp(not half_precision)     # math kernel is the fp32 fallback
 
     return TransformerLM(model_cfg)
 
@@ -193,7 +194,7 @@ def assemble_training_components(
     seed = getattr(run_cfg.trainer, "seed", 42)
     seed_everything(seed, rank=rank)
 
-    model = build_model(run_cfg.model)
+    model = build_model(run_cfg.model, precision=getattr(run_cfg.trainer, "precision", "bf16"))
 
     train_loader, val_loader = build_dataloaders(
         loader_cfg=run_cfg.data,
