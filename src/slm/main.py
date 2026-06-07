@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
 import torch
@@ -133,6 +134,7 @@ def main(
 
     finally:
         cleanup_distributed()
+        os._exit(0)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
