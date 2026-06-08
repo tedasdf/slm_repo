@@ -137,7 +137,12 @@ def main(
             print(f"last_train_loss={state.last_train_loss}")
             print(f"elapsed_seconds={state.elapsed_seconds}")
 
-    finally:
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        cleanup_distributed()
+        os._exit(1)
+    else:
         cleanup_distributed()
         os._exit(0)
 
