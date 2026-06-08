@@ -31,7 +31,7 @@ model:
     mlp_mult: 4.0        # hidden = 4 × 256 = 1024
 
   init:
-    use_fan_in_init: true
+    init_type: "fan_in"
 
 optimizer:
   optimizer_type: "adamw"

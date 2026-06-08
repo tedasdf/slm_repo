@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any, Iterator, Optional
 
+import torch
 from torch.utils.data import DataLoader, IterableDataset
 
 from ..config import DataLoaderConfig
@@ -483,6 +484,133 @@ def _build_text_ray_dataloaders(
             batch_size=loader_cfg.batch_size,
             drop_last=False,
             prefetch_batches=prefetch_batches,
+        )
+
+    return train_loader, val_loader
+
+
+def _resolve_eos_id(tokenizer: Any, tokenizer_cfg: Any) -> int | None:
+    """Return EOS token id for packing: checks SP eos_id property, then tokenizer_cfg.eos_token."""
+    eos_id = getattr(tokenizer, "eos_id", None)
+    if isinstance(eos_id, int) and eos_id >= 0:
+        return eos_id
+    eos_token = getattr(tokenizer_cfg, "eos_token", None)
+    if eos_token is not None:
+        try:
+            return tokenizer.token_to_id(eos_token)
+        except Exception:
+            pass
+    return None
+
+
+class PackedTextDataset(IterableDataset):
+    """Packs tokenized documents end-to-end into fixed-length chunks — no padding.
+
+    Each yielded item is {"input_ids": tensor(seq_len), "labels": tensor(seq_len)}.
+    Documents are separated by eos_id (if provided). Incomplete tail is dropped.
+    """
+
+    def __init__(
+        self,
+        raw_dataset: RawTextDataset,
+        tokenizer: Any,
+        seq_len: int,
+        eos_id: int | None = None,
+    ) -> None:
+        super().__init__()
+        self.raw_dataset = raw_dataset
+        self.tokenizer = tokenizer
+        self.seq_len = seq_len
+        self.eos_id = eos_id
+
+    def __iter__(self) -> Iterator[dict]:
+        buffer: list[int] = []
+        chunk_size = self.seq_len + 1  # need seq_len+1 tokens: input[:seq_len], label[1:]
+
+        for text in self.raw_dataset:
+            ids: list[int] = self.tokenizer.encode(text)
+            if self.eos_id is not None:
+                ids.append(self.eos_id)
+            buffer.extend(ids)
+
+            while len(buffer) >= chunk_size:
+                chunk = buffer[:chunk_size]
+                buffer = buffer[chunk_size:]
+                yield {
+                    "input_ids": torch.tensor(chunk[:-1], dtype=torch.long),
+                    "labels":    torch.tensor(chunk[1:],  dtype=torch.long),
+                }
+        # Remaining tokens dropped — no padding
+
+
+def _collate_packed_batch(batch: list[dict]) -> dict[str, torch.Tensor]:
+    return {
+        "input_ids": torch.stack([x["input_ids"] for x in batch]),
+        "labels":    torch.stack([x["labels"]    for x in batch]),
+    }
+
+
+def build_packed_text_dataloaders(
+    loader_cfg: DataLoaderConfig,
+    tokenizer: Any,
+    tokenizer_cfg: Any = None,
+    *,
+    rank: int = 0,
+    world_size: int = 1,
+    is_distributed: bool = False,
+) -> tuple[DataLoader, DataLoader | None]:
+    val_fraction = float(getattr(loader_cfg, "val_fraction", 0.0))
+    split_seed   = int(getattr(loader_cfg, "split_seed", 42))
+    seq_len      = int(getattr(loader_cfg, "seq_len", 512))
+    eos_id       = _resolve_eos_id(tokenizer, tokenizer_cfg)
+
+    train_raw = RawTextDataset(
+        loader_cfg=loader_cfg,
+        split_name="train",
+        seed_offset=1,
+        max_samples=getattr(loader_cfg, "max_train_samples", None),
+        val_fraction=val_fraction,
+        split_seed=split_seed,
+        rank=rank,
+        world_size=world_size,
+        is_distributed=is_distributed,
+    )
+    train_loader = DataLoader(
+        PackedTextDataset(train_raw, tokenizer, seq_len, eos_id=eos_id),
+        batch_size=loader_cfg.batch_size,
+        shuffle=False,
+        num_workers=0,
+        pin_memory=loader_cfg.pin_memory,
+        drop_last=loader_cfg.drop_last,
+        collate_fn=_collate_packed_batch,
+    )
+
+    val_loader = None
+    has_validation = (
+        getattr(loader_cfg, "val_paths", None) is not None
+        or getattr(loader_cfg, "val_split_name", None) is not None
+        or val_fraction > 0
+    )
+    if has_validation:
+        val_raw = RawTextDataset(
+            loader_cfg=loader_cfg,
+            split_name="val",
+            seed_offset=2,
+            max_samples=getattr(loader_cfg, "max_val_samples", None),
+            val_fraction=val_fraction,
+            split_seed=split_seed,
+            rank=rank,
+            world_size=world_size,
+            is_distributed=is_distributed,
+        )
+        val_loader = DataLoader(
+            PackedTextDataset(val_raw, tokenizer, seq_len, eos_id=eos_id),
+            batch_size=loader_cfg.batch_size,
+            shuffle=False,
+            num_workers=0,
+            pin_memory=loader_cfg.pin_memory,
+            drop_last=False,
+            collate_fn=_collate_packed_batch,
         )
 
     return train_loader, val_loader

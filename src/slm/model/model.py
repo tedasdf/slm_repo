@@ -33,13 +33,13 @@ class TransformerLM(nn.Module):
             if isinstance(module, nn.Embedding):
                 nn.init.normal_(module.weight, mean=0.0, std=embed_std)
             elif isinstance(module, nn.Linear):
-                if self.cfg.init.use_fan_in_init:
+                if self.cfg.init.init_type == "fan_in":
                     # truncated-normal, std = 1/√fan_in, truncated at ±2σ
                     fan_in = module.weight.shape[1]
                     std = 1.0 / math.sqrt(fan_in)
                     nn.init.trunc_normal_(module.weight, mean=0.0, std=std,
                                          a=-2 * std, b=2 * std)
-                else:
+                else:  # fixed_std
                     nn.init.normal_(module.weight, mean=0.0, std=self.cfg.init.init_std)
                 if module.bias is not None:
                     nn.init.zeros_(module.bias)

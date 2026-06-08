@@ -6,14 +6,14 @@ from typing import Any
 import torch
 import torch.nn as nn
 
-from src.slm.data.tokenizer import BPETokenizer
+from src.slm.data.tokenizer import AnyTokenizer, BPETokenizer, SentencePieceTokenizer
 from src.slm.model import ModelConfig, TransformerLM
 from .logging import AttnLogitCallback, PrintMetricsCallback, WandBCallback
 from .trainer import Trainer
 from ..utils.seed import seed_everything
 
 from src.slm.data.config import DataLoaderConfig
-from src.slm.data.loaders.text_loader import build_text_dataloaders
+from src.slm.data.loaders.text_loader import build_packed_text_dataloaders, build_text_dataloaders
 from src.slm.data.loaders.token_loader import build_token_dataloaders
 
 def build_model(model_cfg: ModelConfig, precision: str = "bf16") -> nn.Module:
@@ -108,7 +108,7 @@ def build_scheduler(
     )
 
 
-def build_tokenizer(tokenizer_cfg: Any | None) -> BPETokenizer | None:
+def build_tokenizer(tokenizer_cfg: Any | None) -> AnyTokenizer | None:
     if tokenizer_cfg is None:
         return None
 
@@ -122,6 +122,9 @@ def build_tokenizer(tokenizer_cfg: Any | None) -> BPETokenizer | None:
             raise FileNotFoundError(f"Tokenizer file not found: {tokenizer_path}")
         return None
 
+    tokenizer_type = getattr(tokenizer_cfg, "tokenizer_type", "bpe").lower()
+    if tokenizer_type == "sentencepiece":
+        return SentencePieceTokenizer.load(tokenizer_path)
     return BPETokenizer.load(tokenizer_path)
 
 def build_dataloaders(
@@ -130,8 +133,25 @@ def build_dataloaders(
     rank: int = 0,
     world_size: int = 1,
     is_distributed: bool = False,
+    tokenizer: Any | None = None,
+    tokenizer_cfg: Any | None = None,
 ):
     mode = str(getattr(loader_cfg, "mode", "tokens")).strip().lower()
+
+    if mode == "packed_text":
+        if tokenizer is None:
+            raise ValueError(
+                "mode='packed_text' requires a pre-loaded tokenizer. "
+                "Set tokenizer_path and allow_missing_tokenizer: false in the tokenizer config."
+            )
+        return build_packed_text_dataloaders(
+            loader_cfg,
+            tokenizer,
+            tokenizer_cfg,
+            rank=rank,
+            world_size=world_size,
+            is_distributed=is_distributed,
+        )
 
     if mode in {"text", "raw_text"}:
         return build_text_dataloaders(
@@ -151,7 +171,7 @@ def build_dataloaders(
 
     raise ValueError(
         f"Unsupported loader mode={mode!r}. "
-        "Use one of: 'text', 'raw_text', 'tokens', 'token_blocks'."
+        "Use one of: 'packed_text', 'text', 'raw_text', 'tokens', 'token_blocks'."
     )
 
 def build_callbacks(
@@ -199,11 +219,16 @@ def assemble_training_components(
 
     model = build_model(run_cfg.model, precision=getattr(run_cfg.trainer, "precision", "bf16"))
 
+    tokenizer_cfg = getattr(run_cfg, "tokenizer", None)
+    tokenizer = build_tokenizer(tokenizer_cfg)
+
     train_loader, val_loader = build_dataloaders(
         loader_cfg=run_cfg.data,
         rank=rank,
         world_size=world_size,
         is_distributed=is_distributed,
+        tokenizer=tokenizer,
+        tokenizer_cfg=tokenizer_cfg,
     )
 
     callbacks = build_callbacks(
@@ -214,9 +239,6 @@ def assemble_training_components(
 
     if getattr(run_cfg.trainer, "log_attn_logits", False):
         callbacks.append(AttnLogitCallback())
-
-    tokenizer_cfg = getattr(run_cfg, "tokenizer", None)
-    tokenizer = build_tokenizer(tokenizer_cfg)
 
     return {
         "model": model,

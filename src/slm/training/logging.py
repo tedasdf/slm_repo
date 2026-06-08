@@ -77,10 +77,13 @@ class AttnLogitCallback(Callback):
         model.blocks[0].attn.log_attn_logits = True
 
     def on_step_end(self, trainer: Any, step_outputs: Optional[dict[str, Any]] = None) -> None:
+        import math
         model = getattr(trainer.model, "module", trainer.model)
         val = model.blocks[0].attn.last_attn_logit_max
         if val is not None:
             trainer.state.extra["diagnostics/attn_logit_max_layer0"] = val
+            if val > 0:
+                trainer.state.extra["diagnostics/attn_logit_max_layer0_log"] = math.log(val)
 
 
 class WandBCallback(Callback):
@@ -160,6 +163,7 @@ class WandBCallback(Callback):
             "optimizer/lr",
             "diagnostics/grad_norm",
             "diagnostics/attn_logit_max_layer0",
+            "diagnostics/attn_logit_max_layer0_log",
             "timing/elapsed_since_start_sec",
             "diagnostics/has_nan_or_inf_loss",
         ]:

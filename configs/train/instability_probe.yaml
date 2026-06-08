@@ -38,7 +38,7 @@ model:
     mlp_mult: 4.0
 
   init:
-    use_fan_in_init: true
+    init_type: "fan_in"
 
 optimizer:
   optimizer_type: "adamw"

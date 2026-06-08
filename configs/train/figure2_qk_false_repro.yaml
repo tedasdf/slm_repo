@@ -13,7 +13,7 @@
 # Compare against: figure2_qk_true_repro.yaml (same but qk_norm: true)
 
 model:
-  vocab_size: 16000
+  vocab_size: 32101
   max_seq_len: 512
   num_layers: 3
   model_dim: 512
@@ -34,19 +34,19 @@ model:
     mlp_mult: 4.0
 
   init:
-    use_fan_in_init: true
+    init_type: "fan_in"
 
 optimizer:
   optimizer_type: "adamw"
-  lr: 0.1
-  weight_decay: 0.0
-  beta1: 0.9
-  beta2: 0.95
-  eps: 1.0e-8
+  lr: 0.1 
+  weight_decay: 0.0 # done 
+  beta1: 0.9    # done 
+  beta2: 0.95   # done 
+  eps: 1.0e-8   # done 
 
 scheduler:
   scheduler_type: "cosine_with_warmup"
-  warmup_steps: 5000
+  warmup_steps: 5000    # done 
   t_max: 95000          # shaped like full paper run — first 10k follows same LR curve
   eta_min: 1.0e-5
 
@@ -55,20 +55,20 @@ logging:
   use_wandb: true
   wandb_project: "slm-instability"
   wandb_run_name: "figure2-qk-false"
-  wandb_tags: ["figure2", "qk-false", "fineweb-edu"]
+  wandb_tags: ["figure2", "qk-false", "c4"]
 
 trainer:
   device: "cuda"
   precision: "bf16"
   seed: 42
 
-  train_tokenizer_before_fit: true
+  train_tokenizer_before_fit: false
   text_key: "text"
   max_seq_len: 512
 
-  max_steps: 10000
+  max_steps: 100000
   grad_accum_steps: 32
-  clip_grad_norm: 1.0
+  clip_grad_norm: 1.0     # done 
 
   train_log_every: 1
   eval_every: 500
@@ -84,11 +84,11 @@ trainer:
   log_attn_logits: true
 
 data:
-  mode: text
+  mode: packed_text
   backend: torch
   source_type: huggingface
-  dataset_name: HuggingFaceFW/fineweb-edu
-  dataset_config_name: sample-10BT
+  dataset_name: allenai/c4
+  dataset_config_name: en
   train_split_name: train
   streaming: true
   text_fields: ["text"]
@@ -108,14 +108,8 @@ data:
   drop_last: true
 
 tokenizer:
-  tokenizer_type: "bpe"
-  vocab_size: 16000
-  min_frequency: 2
-  pad_token: "<pad>"
-  eos_token: "<eos>"
-  unk_token: "<unk>"
-  bos_token: null
+  tokenizer_type: "sentencepiece"
+  vocab_size: 32101
   reuse_existing: true
-  tokenizer_train_samples: 10000
-  tokenizer_path: "artifacts/tokenizer/smoke/tokenizer.json"
-  allow_missing_tokenizer: true
+  tokenizer_path: "artifacts/tokenizer/c4_sentencepiece_32101/tokenizer.model"
+  allow_missing_tokenizer: false

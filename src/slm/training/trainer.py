@@ -15,7 +15,7 @@ from .callbacks import CallbackList
 from .run_config import TrainerConfig
 from .state import TrainState
 
-from ..data.tokenizer import BPETokenizer
+from ..data.tokenizer import AnyTokenizer
 from ..data.tokenization import maybe_tokenize_batch, fit_or_load_tokenizer_from_loader
 
 def _apply_independent_weight_decay(model: nn.Module, weight_decay: float) -> None:
@@ -45,7 +45,7 @@ class Trainer:
         train_loader: Any,
         config: TrainerConfig,
         *,
-        tokenizer: BPETokenizer | None = None,
+        tokenizer: AnyTokenizer | None = None,
         tokenizer_cfg: Any | None = None,
         val_loader: Any | None = None,
         scheduler: Any | None = None,
