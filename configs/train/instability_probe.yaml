@@ -21,7 +21,7 @@ model:
   max_seq_len: 512
   num_layers: 3
   model_dim: 512
-  norm_type: "rmsnorm"
+  norm_type: "layernorm"
   norm_eps: 1.0e-6
   use_bias: false
   tie_embeddings: false
@@ -103,7 +103,7 @@ data:
   seed: 42
   shuffle: true
   shuffle_buffer_size: 1000
-  max_train_samples: 20000
+  max_train_samples: null
   max_val_samples: 200
 
   seq_len: 512

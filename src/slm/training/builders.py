@@ -158,6 +158,7 @@ def build_callbacks(
     logging_cfg: Any | None,
     *,
     enabled: bool = True,
+    yaml_path: str | None = None,
 ) -> list[Any]:
     callbacks: list[Any] = []
 
@@ -177,6 +178,7 @@ def build_callbacks(
                 config=getattr(logging_cfg, "wandb_config", None),
                 tags=getattr(logging_cfg, "wandb_tags", None),
                 enabled=enabled,
+                yaml_path=yaml_path,
             )
         )
 
@@ -190,6 +192,7 @@ def assemble_training_components(
     world_size: int = 1,
     is_distributed: bool = False,
     is_main: bool = True,
+    yaml_path: str | None = None,
 ) -> dict[str, Any]:
     seed = getattr(run_cfg.trainer, "seed", 42)
     seed_everything(seed, rank=rank)
@@ -206,6 +209,7 @@ def assemble_training_components(
     callbacks = build_callbacks(
         getattr(run_cfg, "logging", None),
         enabled=is_main,
+        yaml_path=yaml_path,
     )
 
     if getattr(run_cfg.trainer, "log_attn_logits", False):

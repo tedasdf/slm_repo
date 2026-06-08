@@ -71,8 +71,22 @@ def main(
     overrides: str = "{}",
     experiment: bool = False,
     experiment_path: str | None = None,
+    check_params: bool = False,
 ) -> None:
     cfg = load_config(config_path, overrides=overrides)
+
+    if check_params:
+        from .model import TransformerLM
+        model = TransformerLM(cfg.model)
+        total = model.count_params()
+        core  = model.count_core_params()
+        emb   = total - core - model.lm_head.weight.numel()
+        head  = model.lm_head.weight.numel()
+        print(f"total      : {total:>12,}")
+        print(f"core       : {core:>12,}  (excl. embedding + head)")
+        print(f"embedding  : {emb:>12,}")
+        print(f"lm_head    : {head:>12,}")
+        return
 
     if experiment:
         if experiment_path is None:
@@ -100,6 +114,7 @@ def main(
             world_size=dist_env.world_size,
             is_distributed=dist_env.is_distributed,
             is_main=dist_env.is_main,
+            yaml_path=config_path,
         )
 
         model = components["model"].to(dist_env.device)
@@ -153,6 +168,8 @@ if __name__ == "__main__":
                         help='JSON string of config overrides, e.g. \'{"trainer":{"lr":3e-3}}\'')
     parser.add_argument("--experiment_path", type=str, default=None)
     parser.add_argument("--experiment", action="store_true")
+    parser.add_argument("--check_params", action="store_true",
+                        help="Print parameter counts and exit without training.")
     args = parser.parse_args()
 
     main(
@@ -160,4 +177,5 @@ if __name__ == "__main__":
         overrides=args.overrides,
         experiment=args.experiment,
         experiment_path=args.experiment_path,
+        check_params=args.check_params,
     )

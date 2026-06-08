@@ -93,6 +93,7 @@ class WandBCallback(Callback):
         config: dict[str, Any] | None = None,
         tags: list[str] | None = None,
         enabled: bool = True,
+        yaml_path: str | None = None,
     ) -> None:
         self.project = project
         self.name = name
@@ -101,6 +102,7 @@ class WandBCallback(Callback):
         self.config = config or {}
         self.tags = tags or []
         self.enabled = enabled
+        self.yaml_path = yaml_path
 
         self._wandb = None
         self._run = None
@@ -130,6 +132,15 @@ class WandBCallback(Callback):
         if self._run is not None:
             _path = f"{self._run.entity}/{self._run.project}/{self._run.id}"
             print(f"TAP_WANDB_RUN_ID={_path}", flush=True)
+
+        if self._run is not None and self.yaml_path is not None:
+            import os as _os
+            artifact = wandb.Artifact(
+                name=_os.path.splitext(_os.path.basename(self.yaml_path))[0],
+                type="config",
+            )
+            artifact.add_file(self.yaml_path)
+            self._run.log_artifact(artifact)
 
     def on_step_end(self, trainer: Any, step_outputs: Optional[dict[str, Any]] = None) -> None:
         if not self.enabled or self._wandb is None or not getattr(trainer, "is_main", True):
