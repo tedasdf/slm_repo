@@ -69,6 +69,20 @@ class PrintMetricsCallback(Callback):
         print(f"[error] step={trainer.state.step} | {type(exc).__name__}: {exc}")
 
 
+class AttnLogitCallback(Callback):
+    """Tracks max attention logit (pre-softmax) of layer 0 across all b/h/i/j."""
+
+    def on_run_start(self, trainer: Any) -> None:
+        model = getattr(trainer.model, "module", trainer.model)
+        model.blocks[0].attn.log_attn_logits = True
+
+    def on_step_end(self, trainer: Any, step_outputs: Optional[dict[str, Any]] = None) -> None:
+        model = getattr(trainer.model, "module", trainer.model)
+        val = model.blocks[0].attn.last_attn_logit_max
+        if val is not None:
+            trainer.state.extra["diagnostics/attn_logit_max_layer0"] = val
+
+
 class WandBCallback(Callback):
     def __init__(
         self,
@@ -134,6 +148,7 @@ class WandBCallback(Callback):
         for key in [
             "optimizer/lr",
             "diagnostics/grad_norm",
+            "diagnostics/attn_logit_max_layer0",
             "timing/elapsed_since_start_sec",
             "diagnostics/has_nan_or_inf_loss",
         ]:

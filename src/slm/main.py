@@ -105,6 +105,11 @@ def main(
         model = components["model"].to(dist_env.device)
         trainer_cfg = components["trainer_cfg"]
 
+        if dist_env.is_main:
+            total = model.count_params()
+            core  = model.count_core_params()
+            print(f"Parameters: {total:,} total | {core:,} core (excl. embedding + head)")
+
         if trainer_cfg.compile_model and hasattr(torch, "compile"):
             model = torch.compile(model)
 

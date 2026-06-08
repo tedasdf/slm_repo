@@ -8,7 +8,7 @@ import torch.nn as nn
 
 from src.slm.data.tokenizer import BPETokenizer
 from src.slm.model import ModelConfig, TransformerLM
-from .logging import PrintMetricsCallback, WandBCallback
+from .logging import AttnLogitCallback, PrintMetricsCallback, WandBCallback
 from .trainer import Trainer
 from ..utils.seed import seed_everything
 
@@ -207,6 +207,9 @@ def assemble_training_components(
         getattr(run_cfg, "logging", None),
         enabled=is_main,
     )
+
+    if getattr(run_cfg.trainer, "log_attn_logits", False):
+        callbacks.append(AttnLogitCallback())
 
     tokenizer_cfg = getattr(run_cfg, "tokenizer", None)
     tokenizer = build_tokenizer(tokenizer_cfg)

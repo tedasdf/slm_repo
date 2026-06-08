@@ -85,6 +85,7 @@ trainer:
   enable_anomaly_detection: true   # pinpoints the exact op that produces NaN/Inf
   z_loss_coeff: 1e-4        # toggle: 1e-4 to test z-loss stabilisation
   independent_weight_decay: 1.0e-4
+  log_attn_logits: true
 
 
 data:

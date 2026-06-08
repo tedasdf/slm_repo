@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -40,6 +42,9 @@ class CausalSelfAttention(nn.Module):
             self.q_norm = None
             self.k_norm = None
 
+        self.log_attn_logits: bool = False
+        self.last_attn_logit_max: float | None = None
+
     def _reshape_q(self, x: torch.Tensor) -> torch.Tensor:
         bsz, seq_len, _ = x.shape
         q = self.q_proj(x).view(bsz, seq_len, self.num_heads, self.head_dim)
@@ -77,6 +82,13 @@ class CausalSelfAttention(nn.Module):
             dtype=x.dtype,
         )
         q, k = apply_rope(q, k, cos, sin)
+
+        if self.log_attn_logits:
+            with torch.no_grad():
+                scale = 1.0 / math.sqrt(self.head_dim)
+                self.last_attn_logit_max = (
+                    torch.matmul(q, k.transpose(-2, -1)).mul_(scale).max().item()
+                )
 
         y = F.scaled_dot_product_attention(
             q,
