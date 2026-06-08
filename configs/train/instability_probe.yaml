@@ -19,8 +19,8 @@
 model:
   vocab_size: 16000
   max_seq_len: 512
-  num_layers: 4
-  model_dim: 256
+  num_layers: 3
+  model_dim: 512
   norm_type: "rmsnorm"
   norm_eps: 1.0e-6
   use_bias: false
@@ -28,8 +28,8 @@ model:
 
   attention:
     attention_type: "baseline"
-    num_heads: 4
-    num_kv_heads: 4
+    num_heads: 8
+    num_kv_heads: 8
     rope_base: 10000.0
     qk_norm: false        # toggle: true to test QK-norm stabilisation
 
