@@ -6,6 +6,7 @@ from typing import Literal, Optional
 
 from ..data.config import TokenizerConfig, DataLoaderConfig
 from ..model import ModelConfig
+from ..resource_accounting import ResourceConfig
 
 
 PrecisionType = Literal["fp32", "fp16", "bf16"]
@@ -110,3 +111,4 @@ class RunConfig:
 
     tokenizer: TokenizerConfig = field(default_factory=TokenizerConfig)
     data: DataLoaderConfig = field(default_factory=DataLoaderConfig)
+    resource: ResourceConfig = field(default_factory=ResourceConfig)

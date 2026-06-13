@@ -3,10 +3,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+import torch
+
+from ..model.model import TransformerLM
+
 if TYPE_CHECKING:
-    from ..model.model import TransformerLM
+    from ..model.config import ModelConfig
     from ..training.run_config import TrainerConfig
     from .config import ResourceConfig
+
+
+_TORCH_DTYPES = {"fp32": torch.float32, "fp16": torch.float16, "bf16": torch.bfloat16}
 
 
 @dataclass
@@ -55,11 +62,13 @@ class ResourceEstimator:
         trainer_cfg: "TrainerConfig",
         resource_cfg: "ResourceConfig",
         *,
+        batch_size: int = 1,
         world_size: int = 1,
     ) -> None:
         self.model        = model
         self.trainer_cfg  = trainer_cfg
         self.resource_cfg = resource_cfg
+        self.batch_size   = batch_size  # per-device micro-batch size (data.batch_size)
         self.world_size   = world_size
 
     # ── Per-quantity methods ──────────────────────────────────────────────────
@@ -68,39 +77,64 @@ class ResourceEstimator:
         return self.model.count_params()
 
     def estimate_param_memory_gb(self) -> float:
-        # TODO: implement — self.count_params() and self.trainer_cfg.precision
-        #   fp32 → 4 bytes/param,  bf16/fp16 → 2 bytes/param
-        raise NotImplementedError
+        # Reads each parameter's actual dtype, so per-layer dtype overrides
+        # (e.g. fp32 norms alongside bf16 linears) are reflected automatically.
+        total_bytes = sum(p.numel() * p.element_size() for p in self.model.parameters())
+        return total_bytes / 1024**3
 
     def estimate_flops_per_step(self) -> float:
-        # TODO: implement
-        #   tokens_per_step = trainer_cfg.grad_accum_steps * trainer_cfg.max_seq_len
-        #   fwd_flops = tokens_per_step * self.model.flops_per_token(trainer_cfg.max_seq_len)
-        #   total ≈ 3 * fwd_flops  (bwd ≈ 2× fwd)
-        raise NotImplementedError
+        seq_len = self.trainer_cfg.max_seq_len
+        tokens_per_step = self.batch_size * self.trainer_cfg.grad_accum_steps * seq_len
+        fwd_flops = tokens_per_step * self.model.flops_per_token(seq_len)
+        return 3 * fwd_flops  # fwd + bwd (bwd ≈ 2x fwd)
 
     def estimate_activation_memory_gb(self) -> float:
-        # TODO: implement
-        #   self.model.cfg, self.trainer_cfg, self.resource_cfg.activation_memory_overhead
-        raise NotImplementedError
+        cfg = self.model.cfg
+        seq_len = self.trainer_cfg.max_seq_len
+
+        # Per-token activations retained for backward, per transformer block:
+        #   - residual stream copies before attn-norm and mlp-norm: 2 * model_dim
+        #   - q, k, v projections:                                   3 * model_dim
+        #   - attention output (pre out-proj):                       1 * model_dim
+        #   - mlp hidden activation:                                  hidden_dim
+        per_token_elems = 6 * cfg.model_dim + cfg.hidden_dim
+
+        # Flash attention (bf16/fp16, see build_model) never materializes the
+        # full [num_heads, seq_len, seq_len] score matrix. The math fallback
+        # (fp32) does, so account for it only in that case.
+        if self.trainer_cfg.precision == "fp32":
+            per_token_elems += cfg.attention.num_heads * seq_len
+
+        # Activations for one microbatch are freed after its backward pass
+        # before the next accumulation step starts, so this scales with the
+        # real per-device batch_size, not grad_accum_steps.
+        activation_elems = cfg.num_layers * self.batch_size * seq_len * per_token_elems
+        bytes_per_elem = 4 if self.trainer_cfg.precision == "fp32" else 2
+        total_bytes = activation_elems * bytes_per_elem * self.resource_cfg.activation_memory_overhead
+        return total_bytes / 1024**3
 
     def estimate_optimizer_memory_gb(self) -> float:
-        # TODO: implement — AdamW keeps 3 fp32 copies (param + m + v)
-        #   self.estimate_param_memory_gb(), self.trainer_cfg.precision
-        raise NotImplementedError
+        # AdamW keeps grad + exp_avg (m) + exp_avg_sq (v) per parameter, each
+        # matching that parameter's own dtype/size — same basis as param memory.
+        return 3 * self.estimate_param_memory_gb()
 
     def estimate_step_time_sec(self) -> float:
-        # TODO: implement
-        #   self.estimate_flops_per_step() / (resource_cfg.gpu_tflops * 1e12 * resource_cfg.mfu * world_size)
-        raise NotImplementedError
+        # mfu (Model FLOPs Utilization) scales hardware peak FLOPs down to a
+        # realistic achieved rate — depends on attention impl, batch/seq size,
+        # precision, etc. Treated as a single config constant for now.
+        achievable_flops_per_sec = (
+            self.resource_cfg.gpu_tflops * 1e12
+            * self.resource_cfg.mfu
+            * self.world_size
+        )
+        return self.estimate_flops_per_step() / achievable_flops_per_sec
 
     # ── Orchestrator ──────────────────────────────────────────────────────────
 
     def estimate(self) -> ResourceEstimate:
         """Run all estimates; unimplemented methods are silently skipped."""
         est = ResourceEstimate()
-        batch_size = self.trainer_cfg.grad_accum_steps
-        seq_len    = self.trainer_cfg.max_seq_len
+        tokens_per_step = self.batch_size * self.trainer_cfg.grad_accum_steps * self.trainer_cfg.max_seq_len
 
         try:
             est.num_params = self.count_params()
@@ -116,7 +150,7 @@ class ResourceEstimator:
         try:
             est.flops_per_step = self.estimate_flops_per_step()
             if est.num_params:
-                est.flops_per_token = est.flops_per_step / (batch_size * seq_len)
+                est.flops_per_token = est.flops_per_step / tokens_per_step
         except NotImplementedError:
             pass
 
@@ -144,3 +178,26 @@ class ResourceEstimator:
             pass
 
         return est
+
+
+def estimate_resources(
+    model_cfg: "ModelConfig",
+    trainer_cfg: "TrainerConfig",
+    resource_cfg: "ResourceConfig",
+    *,
+    batch_size: int = 1,
+    world_size: int = 1,
+) -> ResourceEstimate:
+    """Build a throwaway model on CPU (cast to trainer_cfg.precision) and run
+    the full ResourceEstimator pass."""
+    model = TransformerLM(model_cfg)
+    model = model.to(_TORCH_DTYPES[trainer_cfg.precision])
+
+    estimator = ResourceEstimator(
+        model,
+        trainer_cfg,
+        resource_cfg,
+        batch_size=batch_size,
+        world_size=world_size,
+    )
+    return estimator.estimate()

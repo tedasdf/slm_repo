@@ -46,10 +46,13 @@ class ResourceAccountingCallback(Callback):
         model_cfg: "ModelConfig",
         trainer_cfg: "TrainerConfig",
         resource_cfg: ResourceConfig | None = None,
+        *,
+        batch_size: int = 1,
     ) -> None:
         self.model_cfg = model_cfg
         self.trainer_cfg = trainer_cfg
         self.resource_cfg = resource_cfg or ResourceConfig()
+        self.batch_size = batch_size  # per-device micro-batch size (data.batch_size)
 
         self.reporter = Reporter(
             log_to_wandb=self.resource_cfg.log_to_wandb,
@@ -71,6 +74,7 @@ class ResourceAccountingCallback(Callback):
             model_cfg=self.model_cfg,
             trainer_cfg=self.trainer_cfg,
             resource_cfg=self.resource_cfg,
+            batch_size=self.batch_size,
             world_size=trainer.world_size,
         )
 

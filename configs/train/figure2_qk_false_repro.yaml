@@ -113,3 +113,16 @@ tokenizer:
   reuse_existing: true
   tokenizer_path: "artifacts/tokenizer/c4_sentencepiece_32101/tokenizer.model"
   allow_missing_tokenizer: false
+
+resource:
+  # L40S: 48GB, ~181 TFLOPs bf16 (dense, non-sparse) — see scripts/slurm/train.slurm
+  gpu_tflops: 181.0
+  gpu_mem_gb: 48.0
+  mfu: 0.35
+  activation_memory_overhead: 1.2
+  memory_budget_fraction: 0.90
+  run_preflight: true
+  abort_on_oom: false
+  log_to_wandb: true
+  write_json_summary: true
+  sample_every_n_steps: 100

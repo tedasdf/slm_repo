@@ -240,6 +240,21 @@ def assemble_training_components(
     if getattr(run_cfg.trainer, "log_attn_logits", False):
         callbacks.append(AttnLogitCallback())
 
+    # Imported lazily: resource_accounting -> training.callbacks -> (full
+    # training package init) -> training.builders -> resource_accounting
+    # would deadlock on a module-level import if resource_accounting is
+    # imported before training.
+    from src.slm.resource_accounting import ResourceAccountingCallback
+
+    callbacks.append(
+        ResourceAccountingCallback(
+            model_cfg=run_cfg.model,
+            trainer_cfg=run_cfg.trainer,
+            resource_cfg=getattr(run_cfg, "resource", None),
+            batch_size=run_cfg.data.batch_size,
+        )
+    )
+
     return {
         "model": model,
         "optimizer_cfg": run_cfg.optimizer,
