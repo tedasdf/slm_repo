@@ -55,7 +55,7 @@ LAYERS=(3 3 6 6)
 DIMS=(256 512 512 768)
 HEADS=(4 8 8 12)
 
-LRS=(1e-4 3e-4 1e-3 3e-3 1e-2 3e-2 1e-1 3e-1)
+LRS=(1e-4 3e-4 1e-3 3e-3 1e-2 3e-2 1e-1)
 
 CONFIG_IDX=$(( SLURM_ARRAY_TASK_ID / ${#LRS[@]} ))
 LR_IDX=$(( SLURM_ARRAY_TASK_ID % ${#LRS[@]} ))

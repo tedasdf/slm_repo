@@ -21,8 +21,8 @@ from src.slm.training.run_config import TrainerConfig
 
 # ── sweep grid ──────────────────────────────────────────────────────────────
 
-DEPTHS = [3, 6, 12, 24]
-WIDTHS = [128, 256, 768, 1024, 2048]
+DEPTHS = 24 # [3, 6, 12, 24]
+WIDTHS = [2048] # [128, 256, 768, 1024, 2048]
 NUM_HEADS = 8
 NUM_KV_HEADS = 8
 
