@@ -6,12 +6,12 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=10
 #SBATCH --mem=64G
-#SBATCH --time=02:00:00
-#SBATCH --array=0-31
+#SBATCH --time=08:00:00
+#SBATCH --array=0-27
 #SBATCH --output=logs/slurm/%x-%A_%a.out
 #SBATCH --error=logs/slurm/%x-%A_%a.err
 
-# Depth/width x learning-rate instability sweep — 4 model sizes x 8 LRs = 32 tasks.
+# Depth/width x learning-rate instability sweep — 4 model sizes x 7 LRs = 28 tasks.
 # Base config: configs/train/figure2_qk_false_repro.yaml, everything else
 # overridden per task below (same CONFIG_PATH/CONFIG_OVERRIDES_JSON mechanism
 # as train.slurm).
@@ -19,27 +19,23 @@
 # Sweep grid:
 #   model:  (L=3,d=256,h=4)=2.4M   (L=3,d=512,h=8)=9.4M
 #           (L=6,d=512,h=8)=19M    (L=6,d=768,h=12)=42M
-#   lr:     1e-4 3e-4 1e-3 3e-3 1e-2 3e-2 1e-1 3e-1
+#   lr:     1e-4 3e-4 1e-3 3e-3 1e-2 3e-2 1e-1
 #
-# 2000 steps each (short instability probe, see instability_probe.yaml),
-# effective batch held at 256x512=131072 tokens/step via batch_size=256,
-# grad_accum_steps=1 (see scripts/estimate_resource_sweep.py — fits easily
-# on a single L40S: <=14.2GB of the 43.2GB budget for the 42M model).
+# 10000 steps each. Schedule matches figure2_qk_false_repro.yaml shape:
+#   warmup_steps=5000, t_max=95000 (cosine decays slowly — LR stays near
+#   peak through 10k steps, giving a fair instability test per model/lr).
+# effective batch: 256x512=131072 tokens/step (batch_size=256, grad_accum=1).
 #
-# Estimated GPU-hours per task @ 2000 steps (L40S, mfu=0.35):
-#   2.4M=0.08h  9.4M=0.19h  19M=0.27h  42M=0.50h   (~8.25 GPU-h total over 32 tasks)
-# These are pure FLOPs/MFU estimates and do NOT include:
-#   - enable_anomaly_detection=true (inherited from figure2_qk_false_repro.yaml)
-#     -> torch.autograd.set_detect_anomaly(True), roughly 1.5-2x backward-pass
-#     overhead (42M: ~0.5h -> ~1h of step-compute alone)
-#   - C4 streaming dataset startup / shuffle-buffer fill
-#   - periodic eval passes (10x over 2000 steps, max_eval_batches=20)
-# --time=02:00:00 gives the 42M model headroom over all of the above.
+# Estimated GPU-hours per task @ 10000 steps (L40S, mfu=0.35, pure FLOPs):
+#   2.4M=0.40h  9.4M=0.95h  19M=1.33h  42M=2.48h  (~41 GPU-h total, 28 tasks)
+# Actual wall-clock is higher — enable_anomaly_detection=true (inherited)
+# adds ~1.5-2x backward overhead (42M: ~5h step-compute alone).
+# --time=08:00:00 covers the 42M model with data/eval/overhead headroom.
 #
 # Usage:
 #   mkdir -p logs/slurm
 #   sbatch scripts/slurm/lr_instability_sweep.slurm
-#   # limit concurrent GPUs:  sbatch --array=0-31%4 scripts/slurm/lr_instability_sweep.slurm
+#   # limit concurrent GPUs:  sbatch --array=0-27%4 scripts/slurm/lr_instability_sweep.slurm
 
 set -eo pipefail
 # Note: -u (unbound variable check) is intentionally omitted — module/conda
@@ -76,7 +72,7 @@ HIDDEN_DIM=$(( MODEL_DIM * 4 ))
 RUN_NAME="lr-sweep-${NAME}-lr${LR}"
 
 export CONFIG_PATH="configs/train/figure2_qk_false_repro.yaml"
-export CONFIG_OVERRIDES_JSON="{\"model\":{\"num_layers\":${NUM_LAYERS},\"model_dim\":${MODEL_DIM},\"attention\":{\"num_heads\":${NUM_HEADS},\"num_kv_heads\":${NUM_HEADS}},\"mlp\":{\"hidden_dim\":${HIDDEN_DIM}}},\"optimizer\":{\"lr\":${LR}},\"scheduler\":{\"warmup_steps\":100,\"t_max\":2000},\"trainer\":{\"max_steps\":2000,\"grad_accum_steps\":1},\"data\":{\"batch_size\":256},\"logging\":{\"wandb_run_name\":\"${RUN_NAME}\",\"wandb_tags\":[\"lr-sweep\",\"qk-false\",\"c4\"]}}"
+export CONFIG_OVERRIDES_JSON="{\"model\":{\"num_layers\":${NUM_LAYERS},\"model_dim\":${MODEL_DIM},\"attention\":{\"num_heads\":${NUM_HEADS},\"num_kv_heads\":${NUM_HEADS}},\"mlp\":{\"hidden_dim\":${HIDDEN_DIM}}},\"optimizer\":{\"lr\":${LR}},\"scheduler\":{\"warmup_steps\":5000,\"t_max\":95000},\"trainer\":{\"max_steps\":10000,\"grad_accum_steps\":1},\"data\":{\"batch_size\":256},\"logging\":{\"wandb_run_name\":\"${RUN_NAME}\",\"wandb_tags\":[\"lr-sweep\",\"qk-false\",\"c4\"]}}"
 export TAP_RUN_ID="$RUN_NAME"
 
 echo "Job ID:    $SLURM_JOB_ID"
