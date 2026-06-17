@@ -24,7 +24,7 @@
 # 10000 steps each. Schedule matches figure2_qk_false_repro.yaml shape:
 #   warmup_steps=5000, t_max=95000 (cosine decays slowly — LR stays near
 #   peak through 10k steps, giving a fair instability test per model/lr).
-# effective batch: 256x512=131072 tokens/step (batch_size=256, grad_accum=1).
+# effective batch: 256x512=131072 tokens/step (batch_size=32, grad_accum=8).
 #
 # Estimated GPU-hours per task @ 10000 steps (L40S, mfu=0.35, pure FLOPs):
 #   2.4M=0.40h  9.4M=0.95h  19M=1.33h  42M=2.48h  (~41 GPU-h total, 28 tasks)
@@ -70,12 +70,7 @@ LR=${LRS[$LR_IDX]}
 HIDDEN_DIM=$(( MODEL_DIM * 4 ))
 
 export CONFIG_PATH="configs/train/figure2_qk_false_repro.yaml"
-<<<<<<< HEAD
-export CONFIG_OVERRIDES_JSON="{\"model\":{\"num_layers\":${NUM_LAYERS},\"model_dim\":${MODEL_DIM},\"attention\":{\"num_heads\":${NUM_HEADS},\"num_kv_heads\":${NUM_HEADS}},\"mlp\":{\"hidden_dim\":${HIDDEN_DIM}}},\"optimizer\":{\"lr\":${LR}},\"scheduler\":{\"warmup_steps\":5000,\"t_max\":95000},\"trainer\":{\"max_steps\":10000,\"grad_accum_steps\":8},\"data\":{\"batch_size\":32},\"logging\":{\"wandb_run_name\":\"${RUN_NAME}\",\"wandb_tags\":[\"lr-sweep\",\"qk-false\",\"c4\"]}}"
-export TAP_RUN_ID="$RUN_NAME"
-=======
-export CONFIG_OVERRIDES_JSON="{\"model\":{\"num_layers\":${NUM_LAYERS},\"model_dim\":${MODEL_DIM},\"attention\":{\"num_heads\":${NUM_HEADS},\"num_kv_heads\":${NUM_HEADS}},\"mlp\":{\"hidden_dim\":${HIDDEN_DIM}}},\"optimizer\":{\"lr\":${LR}},\"scheduler\":{\"warmup_steps\":5000,\"t_max\":95000},\"trainer\":{\"max_steps\":10000,\"grad_accum_steps\":1},\"data\":{\"batch_size\":256},\"logging\":{\"wandb_tags\":[\"lr-sweep\",\"qk-false\",\"c4\"]}}"
->>>>>>> 071f999a97ac9a2e09430d7460848a1eab9408b7
+export CONFIG_OVERRIDES_JSON="{\"model\":{\"num_layers\":${NUM_LAYERS},\"model_dim\":${MODEL_DIM},\"attention\":{\"num_heads\":${NUM_HEADS},\"num_kv_heads\":${NUM_HEADS}},\"mlp\":{\"hidden_dim\":${HIDDEN_DIM}}},\"optimizer\":{\"lr\":${LR}},\"scheduler\":{\"warmup_steps\":5000,\"t_max\":95000},\"trainer\":{\"max_steps\":10000,\"grad_accum_steps\":8},\"data\":{\"batch_size\":32},\"logging\":{\"wandb_tags\":[\"lr-sweep\",\"qk-false\",\"c4\"]}}"
 
 echo "Job ID:    $SLURM_JOB_ID"
 echo "Array idx: $SLURM_ARRAY_TASK_ID  ->  model=$NAME (L=$NUM_LAYERS d=$MODEL_DIM h=$NUM_HEADS), lr=$LR"
