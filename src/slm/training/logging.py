@@ -145,6 +145,12 @@ class WandBCallback(Callback):
             artifact.add_file(self.yaml_path)
             self._run.log_artifact(artifact)
 
+        # Write resolved hyperparams to summary immediately after init so that
+        # CONFIG_OVERRIDES_JSON values are captured even if the run crashes
+        # (high-LR divergence etc.) before on_run_end fires.
+        if self._run is not None:
+            self._write_hparam_summary(trainer)
+
     def on_step_end(self, trainer: Any, step_outputs: Optional[dict[str, Any]] = None) -> None:
         if not self.enabled or self._wandb is None or not getattr(trainer, "is_main", True):
             return
@@ -206,9 +212,32 @@ class WandBCallback(Callback):
 
         self._wandb.log(payload, step=state.step)
 
+    def _write_hparam_summary(self, trainer: Any) -> None:
+        """Write resolved hyperparams to W&B summary.
+
+        Called at run start and run end so CONFIG_OVERRIDES_JSON values
+        are reflected in summary regardless of whether the run completes.
+        """
+        if self._run is None:
+            return
+        try:
+            pg = trainer.optimizer.param_groups[0]
+            # initial_lr is set by PyTorch schedulers; fall back to current lr
+            self._run.summary["config/lr"] = pg.get("initial_lr", pg.get("lr"))
+        except (AttributeError, IndexError, KeyError):
+            pass
+        try:
+            model = getattr(trainer.model, "module", trainer.model)
+            self._run.summary["config/num_layers"] = model.cfg.num_layers
+            self._run.summary["config/model_dim"]  = model.cfg.model_dim
+        except AttributeError:
+            pass
+
     def on_run_end(self, trainer: Any) -> None:
         if not self.enabled or self._run is None or not getattr(trainer, "is_main", True):
             return
+
+        self._write_hparam_summary(trainer)
 
         summary = {}
         if trainer.state.best_val_loss is not None:
@@ -231,6 +260,7 @@ class WandBCallback(Callback):
     def on_exception(self, trainer: Any, exc: BaseException) -> None:
         if not self.enabled or self._run is None or not getattr(trainer, "is_main", True):
             return
+        self._write_hparam_summary(trainer)
         self._run.summary["failed"] = True
         self._run.summary["error_type"] = type(exc).__name__
         self._run.summary["error_message"] = str(exc)
