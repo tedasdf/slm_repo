@@ -72,7 +72,7 @@ HIDDEN_DIM=$(( MODEL_DIM * 4 ))
 RUN_NAME="lr-sweep-${NAME}-lr${LR}"
 
 export CONFIG_PATH="configs/train/figure2_qk_false_repro.yaml"
-export CONFIG_OVERRIDES_JSON="{\"model\":{\"num_layers\":${NUM_LAYERS},\"model_dim\":${MODEL_DIM},\"attention\":{\"num_heads\":${NUM_HEADS},\"num_kv_heads\":${NUM_HEADS}},\"mlp\":{\"hidden_dim\":${HIDDEN_DIM}}},\"optimizer\":{\"lr\":${LR}},\"scheduler\":{\"warmup_steps\":5000,\"t_max\":95000},\"trainer\":{\"max_steps\":10000,\"grad_accum_steps\":1},\"data\":{\"batch_size\":256},\"logging\":{\"wandb_run_name\":\"${RUN_NAME}\",\"wandb_tags\":[\"lr-sweep\",\"qk-false\",\"c4\"]}}"
+export CONFIG_OVERRIDES_JSON="{\"model\":{\"num_layers\":${NUM_LAYERS},\"model_dim\":${MODEL_DIM},\"attention\":{\"num_heads\":${NUM_HEADS},\"num_kv_heads\":${NUM_HEADS}},\"mlp\":{\"hidden_dim\":${HIDDEN_DIM}}},\"optimizer\":{\"lr\":${LR}},\"scheduler\":{\"warmup_steps\":5000,\"t_max\":95000},\"trainer\":{\"max_steps\":10000,\"grad_accum_steps\":8},\"data\":{\"batch_size\":32},\"logging\":{\"wandb_run_name\":\"${RUN_NAME}\",\"wandb_tags\":[\"lr-sweep\",\"qk-false\",\"c4\"]}}"
 export TAP_RUN_ID="$RUN_NAME"
 
 echo "Job ID:    $SLURM_JOB_ID"
