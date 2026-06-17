@@ -69,11 +69,13 @@ LR=${LRS[$LR_IDX]}
 # re-derive it, so set hidden_dim explicitly (mlp_mult=4.0, per figure2).
 HIDDEN_DIM=$(( MODEL_DIM * 4 ))
 
-RUN_NAME="lr-sweep-${NAME}-lr${LR}"
-
 export CONFIG_PATH="configs/train/figure2_qk_false_repro.yaml"
+<<<<<<< HEAD
 export CONFIG_OVERRIDES_JSON="{\"model\":{\"num_layers\":${NUM_LAYERS},\"model_dim\":${MODEL_DIM},\"attention\":{\"num_heads\":${NUM_HEADS},\"num_kv_heads\":${NUM_HEADS}},\"mlp\":{\"hidden_dim\":${HIDDEN_DIM}}},\"optimizer\":{\"lr\":${LR}},\"scheduler\":{\"warmup_steps\":5000,\"t_max\":95000},\"trainer\":{\"max_steps\":10000,\"grad_accum_steps\":8},\"data\":{\"batch_size\":32},\"logging\":{\"wandb_run_name\":\"${RUN_NAME}\",\"wandb_tags\":[\"lr-sweep\",\"qk-false\",\"c4\"]}}"
 export TAP_RUN_ID="$RUN_NAME"
+=======
+export CONFIG_OVERRIDES_JSON="{\"model\":{\"num_layers\":${NUM_LAYERS},\"model_dim\":${MODEL_DIM},\"attention\":{\"num_heads\":${NUM_HEADS},\"num_kv_heads\":${NUM_HEADS}},\"mlp\":{\"hidden_dim\":${HIDDEN_DIM}}},\"optimizer\":{\"lr\":${LR}},\"scheduler\":{\"warmup_steps\":5000,\"t_max\":95000},\"trainer\":{\"max_steps\":10000,\"grad_accum_steps\":1},\"data\":{\"batch_size\":256},\"logging\":{\"wandb_tags\":[\"lr-sweep\",\"qk-false\",\"c4\"]}}"
+>>>>>>> 071f999a97ac9a2e09430d7460848a1eab9408b7
 
 echo "Job ID:    $SLURM_JOB_ID"
 echo "Array idx: $SLURM_ARRAY_TASK_ID  ->  model=$NAME (L=$NUM_LAYERS d=$MODEL_DIM h=$NUM_HEADS), lr=$LR"
@@ -81,7 +83,6 @@ echo "Host:      $(hostname)"
 echo "Started:   $(date)"
 echo "Config:    $CONFIG_PATH"
 echo "Overrides: $CONFIG_OVERRIDES_JSON"
-echo "Run ID:    $TAP_RUN_ID"
 
 # ── conda ─────────────────────────────────────────────────────────────────────
 module load miniforge3

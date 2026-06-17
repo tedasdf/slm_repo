@@ -1,0 +1,11 @@
+
+{"text": "Machine learning models learn patterns from data."}
+
+{"text": "A transformer model predicts the next token in a sequence."}
+
+{"text": "Training loss should decrease during a successful smoke test."}
+
+{"text": "This is a small local dataset for testing the training loop."}
+
+{"text": "The purpose of this run is to verify TAP metrics and Slurm tracking."}
+

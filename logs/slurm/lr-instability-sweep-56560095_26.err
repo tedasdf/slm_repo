@@ -1,0 +1,46 @@
+wandb: [wandb.login()] Loaded credentials for https://api.wandb.ai from /home/slo/.netrc.
+wandb: Currently logged in as: teedsingyau (arc_agi) to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+wandb: setting up run znekx8m8
+wandb: Tracking run with wandb version 0.26.0
+wandb: Run data is saved locally in /fs04/scratch2/vf38/sloo0021/slm_repo/wandb/run-20260616_052154-znekx8m8
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run lr-sweep-42M-lr1e-3
+wandb: ⭐️ View project at https://wandb.ai/arc_agi/slm-instability
+wandb: 🚀 View run at https://wandb.ai/arc_agi/slm-instability/runs/znekx8m8
+wandb: WARNING Artifact "figure2_qk_false_repro" already exists with the same content. No new version will be created.
+/home/slo/.conda/envs/slm_ven/lib/python3.10/site-packages/torch/optim/lr_scheduler.py:240: UserWarning: The epoch parameter in `scheduler.step()` was not necessary and is being deprecated where possible. Please use `scheduler.step()` to step the scheduler. During the deprecation, if epoch is different from None, the closed form is used instead of the new chainable form, where available. Please open an issue if you are unable to replicate your use case: https://github.com/pytorch/pytorch/issues/new/choose.
+  warnings.warn(EPOCH_DEPRECATION_WARNING, UserWarning)
+wandb: updating run metadata
+wandb: uploading config.yaml; uploading output.log; uploading wandb-summary.json
+wandb: uploading output.log
+wandb: 
+wandb: Run history:
+wandb:   diagnostics/grad_norm █▅▅▄▂▄▂▂▂▂▂▂▄▁▁▁▂▁▁▂▁▁▁▂▂▁▁▂▂▂▁▁▁▁▂▁▁▁▁▁
+wandb:      eval/best_val_loss █▃▁▁
+wandb:   eval/num_eval_batches ▁▁▁▁
+wandb:           eval/val_loss █▃▁▁
+wandb:            optimizer/lr ▄▇███████▇▇▆▆▆▆▅▅▅▅▅▄▄▃▃▃▃▃▃▃▂▂▂▂▂▂▁▁▁▁▁
+wandb:          step/grad_norm █▆▄▅▂▄▂▂▂▂▂▂▂▂▁▂▂▂▂▁▂▂▁▁▁▁▁▁▄▁▂▁▁▂▁▁▁▁▁▁
+wandb:               step/loss ██▇▇▅▅▅▆▄▄▄▄▄▃▄▃▄▃▃▃▃▃▄▇▂▃▂▂▃▂▂▂▁▃▂▂▁▂▂▂
+wandb:                 step/lr ▄▅▆▇██████▇▇▇▇▇▆▆▆▅▅▄▄▄▃▃▃▂▂▂▂▂▂▂▂▁▁▁▁▁▁
+wandb:   step/num_eval_batches ▁▁▁▁
+wandb: step/samples_this_batch ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:                     +10 ...
+wandb: 
+wandb: Run summary:
+wandb:                   best_val_loss 4.20354
+wandb:           diagnostics/grad_norm 0.24339
+wandb: diagnostics/has_nan_or_inf_loss False
+wandb:                 elapsed_seconds 2274.22512
+wandb:              eval/best_val_loss 4.20354
+wandb:           eval/num_eval_batches 7
+wandb:                   eval/val_loss 4.20354
+wandb:                 last_train_loss 4.18497
+wandb:                   last_val_loss 4.20354
+wandb:                    optimizer/lr 1e-05
+wandb:                             +30 ...
+wandb: 
+wandb: 🚀 View run lr-sweep-42M-lr1e-3 at: https://wandb.ai/arc_agi/slm-instability/runs/znekx8m8
+wandb: ⭐️ View project at: https://wandb.ai/arc_agi/slm-instability
+wandb: Synced 7 W&B file(s), 0 media file(s), 0 artifact file(s) and 0 other file(s)
+wandb: Find logs at: ./wandb/run-20260616_052154-znekx8m8/logs
