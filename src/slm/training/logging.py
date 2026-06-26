@@ -222,11 +222,62 @@ class WandBCallback(Callback):
             return
         try:
             model = getattr(trainer.model, "module", trainer.model)
-            self._run.summary["config/num_layers"] = model.cfg.num_layers
-            self._run.summary["config/model_dim"]  = model.cfg.model_dim
+            cfg = model.cfg
+            attn = cfg.attention
+            mlp = cfg.mlp
+            self._run.summary.update({
+                "config/num_layers": cfg.num_layers,
+                "config/model_dim": cfg.model_dim,
+                "config/num_heads": attn.num_heads,
+                "config/num_kv_heads": attn.num_kv_heads,
+                "config/head_dim": cfg.head_dim,
+                "config/hidden_dim": cfg.hidden_dim,
+                "config/mlp_mult": mlp.mlp_mult,
+                "config/qk_norm": attn.qk_norm,
+                "config/use_bias": cfg.use_bias,
+                "config/tie_embeddings": cfg.tie_embeddings,
+                "config/core_params": model.count_core_params(),
+                "config/total_params": model.count_params(),
+            })
         except AttributeError:
             pass
 
+        try:
+            trainer_cfg = trainer.config
+            self._run.summary.update({
+                "config/max_steps": trainer_cfg.max_steps,
+                "config/grad_accum_steps": trainer_cfg.grad_accum_steps,
+                "config/precision": trainer_cfg.precision,
+            })
+        except AttributeError:
+            pass
+
+        try:
+            scheduler = trainer.scheduler
+            if scheduler is not None:
+                fields: dict[str, Any] = {}
+                if hasattr(scheduler, "_schedulers"):
+                    warmup = scheduler._schedulers[0]
+                    cosine = scheduler._schedulers[1] if len(scheduler._schedulers) > 1 else None
+                    if hasattr(warmup, "total_iters"):
+                        fields["config/warmup_steps"] = warmup.total_iters
+                    if cosine is not None:
+                        if hasattr(cosine, "T_max"):
+                            fields["config/cosine_t_max"] = cosine.T_max
+                        if hasattr(cosine, "eta_min"):
+                            fields["config/eta_min"] = cosine.eta_min
+                    if "config/warmup_steps" in fields and "config/cosine_t_max" in fields:
+                        fields["config/scheduler_t_max"] = (
+                            fields["config/warmup_steps"] + fields["config/cosine_t_max"]
+                        )
+                else:
+                    if hasattr(scheduler, "T_max"):
+                        fields["config/scheduler_t_max"] = scheduler.T_max
+                    if hasattr(scheduler, "eta_min"):
+                        fields["config/eta_min"] = scheduler.eta_min
+                self._run.summary.update(fields)
+        except AttributeError:
+            pass
     def on_run_end(self, trainer: Any) -> None:
         if not self.enabled or self._run is None or not getattr(trainer, "is_main", True):
             return
@@ -234,6 +285,7 @@ class WandBCallback(Callback):
         self._run.finish()
         self._run = None
         self._wandb = None
+
     def on_exception(self, trainer: Any, exc: BaseException) -> None:
         if not self.enabled or self._run is None or not getattr(trainer, "is_main", True):
             return
