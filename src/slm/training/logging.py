@@ -215,8 +215,8 @@ class WandBCallback(Callback):
     def _write_hparam_summary(self, trainer: Any) -> None:
         """Write resolved hyperparams to W&B summary.
 
-        Called at run start and run end so CONFIG_OVERRIDES_JSON values
-        are reflected in summary regardless of whether the run completes.
+        Called once at run start so CONFIG_OVERRIDES_JSON values are reflected
+        in summary even if the run crashes before on_run_end fires.
         """
         if self._run is None:
             return
@@ -236,8 +236,6 @@ class WandBCallback(Callback):
     def on_run_end(self, trainer: Any) -> None:
         if not self.enabled or self._run is None or not getattr(trainer, "is_main", True):
             return
-
-        self._write_hparam_summary(trainer)
 
         summary = {}
         if trainer.state.best_val_loss is not None:
@@ -260,7 +258,6 @@ class WandBCallback(Callback):
     def on_exception(self, trainer: Any, exc: BaseException) -> None:
         if not self.enabled or self._run is None or not getattr(trainer, "is_main", True):
             return
-        self._write_hparam_summary(trainer)
         self._run.summary["failed"] = True
         self._run.summary["error_type"] = type(exc).__name__
         self._run.summary["error_message"] = str(exc)
