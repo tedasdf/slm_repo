@@ -221,12 +221,6 @@ class WandBCallback(Callback):
         if self._run is None:
             return
         try:
-            pg = trainer.optimizer.param_groups[0]
-            # initial_lr is set by PyTorch schedulers; fall back to current lr
-            self._run.summary["config/lr"] = pg.get("initial_lr", pg.get("lr"))
-        except (AttributeError, IndexError, KeyError):
-            pass
-        try:
             model = getattr(trainer.model, "module", trainer.model)
             self._run.summary["config/num_layers"] = model.cfg.num_layers
             self._run.summary["config/model_dim"]  = model.cfg.model_dim
@@ -238,15 +232,11 @@ class WandBCallback(Callback):
             return
 
         summary = {}
-        if trainer.state.best_val_loss is not None:
-            summary["best_val_loss"] = trainer.state.best_val_loss
         if trainer.state.elapsed_seconds is not None:
             summary["elapsed_seconds"] = trainer.state.elapsed_seconds
 
         summary["train_tokens_seen"] = trainer.state.train_tokens_seen
         summary["train_samples_seen"] = trainer.state.train_samples_seen
-        summary["last_train_loss"] = trainer.state.last_train_loss
-        summary["last_val_loss"] = trainer.state.last_val_loss
 
         for k, v in summary.items():
             self._run.summary[k] = v
