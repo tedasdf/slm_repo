@@ -231,20 +231,9 @@ class WandBCallback(Callback):
         if not self.enabled or self._run is None or not getattr(trainer, "is_main", True):
             return
 
-        summary = {}
-        if trainer.state.elapsed_seconds is not None:
-            summary["elapsed_seconds"] = trainer.state.elapsed_seconds
-
-        summary["train_tokens_seen"] = trainer.state.train_tokens_seen
-        summary["train_samples_seen"] = trainer.state.train_samples_seen
-
-        for k, v in summary.items():
-            self._run.summary[k] = v
-
         self._run.finish()
         self._run = None
         self._wandb = None
-
     def on_exception(self, trainer: Any, exc: BaseException) -> None:
         if not self.enabled or self._run is None or not getattr(trainer, "is_main", True):
             return

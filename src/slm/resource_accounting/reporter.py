@@ -116,8 +116,8 @@ class Reporter:
         if budget_report.headroom_fraction is not None:
             fields["resource/est_memory_headroom_pct"] = budget_report.headroom_fraction * 100
 
-        # Log as run summary (not a per-step metric).
-        wandb.run.summary.update(fields)
+        # Log as namespaced W&B metrics, not run.summary fields.
+        wandb.log(fields, step=0)
 
     # ── Per-step actuals ──────────────────────────────────────────────────────
 
