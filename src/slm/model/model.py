@@ -55,13 +55,17 @@ class TransformerLM(nn.Module):
             x = block(x)
 
         x = self.final_norm(x)
-        logits = self.lm_head(x)
+        final_hidden = x
+        logits = self.lm_head(final_hidden)
 
         if self.cfg.logit_softcap is not None:
             softcap = self.cfg.logit_softcap
             logits = softcap * torch.tanh(logits / softcap)
 
-        out: dict[str, torch.Tensor] = {"logits": logits}
+        out: dict[str, torch.Tensor] = {
+            "logits": logits,
+            "final_hidden": final_hidden,
+        }
 
         if targets is not None:
             loss = F.cross_entropy(

@@ -27,6 +27,33 @@ def _apply_independent_weight_decay(model: nn.Module, weight_decay: float) -> No
                 p.mul_(1.0 - weight_decay)
 
 
+def _global_param_norm(model: nn.Module) -> float:
+    total_sq = 0.0
+    with torch.no_grad():
+        for p in model.parameters():
+            if not p.requires_grad:
+                continue
+            total_sq += p.detach().float().pow(2).sum().item()
+    return math.sqrt(total_sq)
+
+
+def _snapshot_trainable_params(model: nn.Module) -> list[tuple[nn.Parameter, torch.Tensor]]:
+    with torch.no_grad():
+        return [
+            (p, p.detach().clone())
+            for p in model.parameters()
+            if p.requires_grad
+        ]
+
+
+def _global_update_norm(before: list[tuple[nn.Parameter, torch.Tensor]]) -> float:
+    total_sq = 0.0
+    with torch.no_grad():
+        for p, old in before:
+            total_sq += (p.detach().float() - old.float()).pow(2).sum().item()
+    return math.sqrt(total_sq)
+
+
 def move_to_device(batch: Any, device: torch.device) -> Any:
     if torch.is_tensor(batch):
         return batch.to(device, non_blocking=True)
@@ -232,6 +259,29 @@ class Trainer:
             loss = loss + z_loss
             self.state.extra["diagnostics/z_loss"] = float(z_loss.detach().item())
 
+        if isinstance(outputs, dict):
+            with torch.no_grad():
+                final_hidden = outputs.get("final_hidden")
+                if torch.is_tensor(final_hidden):
+                    self.state.extra["diagnostics/final_hidden_l2"] = (
+                        final_hidden.detach().norm(dim=-1).mean().item()
+                    )
+
+                logits = outputs.get("logits")
+                if torch.is_tensor(logits):
+                    logits_detached = logits.detach()
+                    self.state.extra["diagnostics/logit_l2"] = (
+                        logits_detached.norm(dim=-1).mean().item()
+                    )
+                    self.state.extra["diagnostics/max_logit"] = logits_detached.max().item()
+                    self.state.extra["diagnostics/min_logit"] = logits_detached.min().item()
+                    self.state.extra["diagnostics/logsumexp_logits"] = (
+                        torch.logsumexp(logits_detached, dim=-1).mean().item()
+                    )
+                    self.state.extra["diagnostics/mean_max_softmax_prob"] = (
+                        torch.softmax(logits_detached, dim=-1).max(dim=-1).values.mean().item()
+                    )
+
         self.state.extra["diagnostics/has_nan_or_inf_loss"] = not torch.isfinite(loss)
 
         out_dict: dict[str, Any] = outputs if isinstance(outputs, dict) else {"outputs": outputs}
@@ -346,6 +396,8 @@ class Trainer:
             grad_norm = self._compute_grad_norm()
 
         self.state.extra["diagnostics/grad_norm"] = grad_norm
+        param_norm = _global_param_norm(self.model)
+        params_before_step = _snapshot_trainable_params(self.model)
 
         if self._use_grad_scaler():
             self.grad_scaler.step(self.optimizer)
@@ -355,6 +407,13 @@ class Trainer:
 
         if self.config.independent_weight_decay is not None:
             _apply_independent_weight_decay(self.model, self.config.independent_weight_decay)
+
+        update_norm = _global_update_norm(params_before_step)
+        update_to_param_norm = update_norm / param_norm if param_norm > 0.0 else None
+
+        self.state.extra["diagnostics/param_norm"] = param_norm
+        self.state.extra["diagnostics/update_norm"] = update_norm
+        self.state.extra["diagnostics/update_to_param_norm"] = update_to_param_norm
 
         self.optimizer.zero_grad(set_to_none=True)
 
@@ -366,6 +425,9 @@ class Trainer:
 
         return {
             "grad_norm": grad_norm,
+            "param_norm": param_norm,
+            "update_norm": update_norm,
+            "update_to_param_norm": update_to_param_norm,
             "lr": lr,
         }
 
