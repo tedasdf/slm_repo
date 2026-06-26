@@ -38,7 +38,7 @@ optimizer:
   eps: 1.0e-8
 
 scheduler:
-  scheduler_type: "cosine_with_warmup"
+  scheduler_type: "constant"
   warmup_steps: 100
   t_max: 2000
   eta_min: 1.0e-5

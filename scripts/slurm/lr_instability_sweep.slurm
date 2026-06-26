@@ -46,7 +46,7 @@ export SCRATCH="${SCRATCH:-/home/slo/vf38_scratch2/sloo0021}"
 mkdir -p logs/slurm
 
 # ── sweep grid ──────────────────────────────────────────────────────────────
-NAMES=(2p4M 9p4M 19M 42M)
+
 LAYERS=(3 3 6 6)
 DIMS=(256 512 512 768)
 HEADS=(4 8 8 12)
@@ -56,7 +56,6 @@ LRS=(1e-4 3e-4 1e-3 3e-3 1e-2 3e-2 1e-1)
 CONFIG_IDX=$(( SLURM_ARRAY_TASK_ID / ${#LRS[@]} ))
 LR_IDX=$(( SLURM_ARRAY_TASK_ID % ${#LRS[@]} ))
 
-NAME=${NAMES[$CONFIG_IDX]}
 NUM_LAYERS=${LAYERS[$CONFIG_IDX]}
 MODEL_DIM=${DIMS[$CONFIG_IDX]}
 NUM_HEADS=${HEADS[$CONFIG_IDX]}
@@ -73,7 +72,7 @@ export CONFIG_PATH="configs/train/figure2_qk_false_repro.yaml"
 export CONFIG_OVERRIDES_JSON="{\"model\":{\"num_layers\":${NUM_LAYERS},\"model_dim\":${MODEL_DIM},\"attention\":{\"num_heads\":${NUM_HEADS},\"num_kv_heads\":${NUM_HEADS}},\"mlp\":{\"hidden_dim\":${HIDDEN_DIM}}},\"optimizer\":{\"lr\":${LR}},\"scheduler\":{\"warmup_steps\":500,\"t_max\":9500},\"trainer\":{\"max_steps\":10000,\"grad_accum_steps\":8},\"data\":{\"batch_size\":32},\"logging\":{\"wandb_tags\":[\"lr-sweep\",\"qk-false\",\"c4\"]}}"
 
 echo "Job ID:    $SLURM_JOB_ID"
-echo "Array idx: $SLURM_ARRAY_TASK_ID  ->  model=$NAME (L=$NUM_LAYERS d=$MODEL_DIM h=$NUM_HEADS), lr=$LR"
+echo "Array idx: $SLURM_ARRAY_TASK_ID  -> (L=$NUM_LAYERS d=$MODEL_DIM h=$NUM_HEADS), lr=$LR"
 echo "Host:      $(hostname)"
 echo "Started:   $(date)"
 echo "Config:    $CONFIG_PATH"
