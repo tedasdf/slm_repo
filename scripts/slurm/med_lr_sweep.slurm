@@ -29,8 +29,8 @@
 
 set -eo pipefail
 
-LRS=(1e-4 3e-4 1e-3 3e-3 1e-2 3e-2 1e-1)
-LABELS=("very slow / stable" "stable / maybe slow" "stable-learning" "stable-learning or edge" "edge/plateau" "boundary or divergent" "break/divergent")
+LRS=(3e-1 1e0 3e0)
+LABELS=("very high" "extreme" "likely divergent")
 
 LABEL="med-lr-no-warmup-total-14492160-core-6300160"
 
