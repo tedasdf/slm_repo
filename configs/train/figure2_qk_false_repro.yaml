@@ -14,9 +14,9 @@
 
 model:
   vocab_size: 32101
-  max_seq_len: 512
-  num_layers: 3
-  model_dim: 512
+  max_seq_len: 128
+  num_layers: 4
+  model_dim: 128
   norm_type: "layernorm"
   norm_eps: 1.0e-6
   use_bias: false
@@ -24,8 +24,8 @@ model:
 
   attention:
     attention_type: "baseline"
-    num_heads: 8
-    num_kv_heads: 8
+    num_heads: 4
+    num_kv_heads: 4
     rope_base: 10000.0
     qk_norm: false
 
@@ -67,7 +67,7 @@ trainer:
   max_seq_len: 512
 
   max_steps: 100000
-  grad_accum_steps: 32
+  grad_accum_steps: 1
   clip_grad_norm: 1.0     # done 
 
   train_log_every: 1
@@ -102,7 +102,7 @@ data:
   max_val_samples: 200
 
   seq_len: 512
-  batch_size: 8
+  batch_size: 32
   num_workers: 0
   pin_memory: true
   drop_last: true
