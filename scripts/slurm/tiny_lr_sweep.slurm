@@ -6,8 +6,8 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=10
 #SBATCH --mem=64G
-#SBATCH --time=01:00:00
-#SBATCH --array=0-5
+#SBATCH --time=04:00:00
+#SBATCH --array=0-6
 #SBATCH --output=logs/slurm/%x-%A_%a.out
 #SBATCH --error=logs/slurm/%x-%A_%a.err
 
@@ -20,14 +20,12 @@
 #   mkdir -p logs/slurm
 #   sbatch scripts/slurm/tiny_lr_sweep.slurm
 #   # limit concurrent GPUs:
-#   sbatch --array=0-5%2 scripts/slurm/tiny_lr_sweep.slurm
+#   sbatch --array=0-6%2 scripts/slurm/tiny_lr_sweep.slurm
 
 set -eo pipefail
 
-# Full LR sweep:
-# LRS=(1e-4 3e-4 1e-3 3e-3 1e-2 3e-2 1e-1)
-LRS=(3e-3 1e-2 3e-2 1e-1 3e-1 1e0)
-LABELS=("stable / maybe slow" "stable-learning" "stable-learning or edge" "edge/plateau" "boundary or divergent" "break/divergent")
+LRS=(1e-4 3e-4 1e-3 3e-3 1e-2 3e-2 1e-1)
+LABELS=("very slow / stable" "stable / maybe slow" "stable-learning" "stable-learning or edge" "edge/plateau" "boundary or divergent" "break/divergent")
 LR=${LRS[$SLURM_ARRAY_TASK_ID]}
 LR_LABEL=${LABELS[$SLURM_ARRAY_TASK_ID]}
 
