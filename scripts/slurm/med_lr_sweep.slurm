@@ -6,10 +6,9 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=10
 #SBATCH --mem=64G
-#SBATCH --time=08:00:00
-#SBATCH --array=0-6
-#SBATCH --output=logs/slurm/%x-%A_%a.out
-#SBATCH --error=logs/slurm/%x-%A_%a.err
+#SBATCH --time=56:00:00
+#SBATCH --output=logs/slurm/%x-%j.out
+#SBATCH --error=logs/slurm/%x-%j.err
 
 # LR sweep for configs/train/med_lr.yaml.
 #
@@ -24,26 +23,30 @@
 # Usage:
 #   mkdir -p logs/slurm
 #   sbatch scripts/slurm/med_lr_sweep.slurm
-#   # limit concurrent GPUs:
-#   sbatch --array=0-6%2 scripts/slurm/med_lr_sweep.slurm
+#
+# This runs the LR values sequentially in one Slurm allocation. That avoids
+# torchrun rendezvous port collisions between concurrent array tasks.
 
 set -eo pipefail
 
 LRS=(1e-4 3e-4 1e-3 3e-3 1e-2 3e-2 1e-1)
 LABELS=("very slow / stable" "stable / maybe slow" "stable-learning" "stable-learning or edge" "edge/plateau" "boundary or divergent" "break/divergent")
-LR=${LRS[$SLURM_ARRAY_TASK_ID]}
-LR_LABEL=${LABELS[$SLURM_ARRAY_TASK_ID]}
 
 LABEL="med-lr-no-warmup-total-14492160-core-6300160"
 
-export CONFIG_PATH="configs/train/med_lr.yaml"
-export CONFIG_OVERRIDES_JSON="{\"optimizer\":{\"lr\":${LR}}}"
+for IDX in "${!LRS[@]}"; do
+    LR=${LRS[$IDX]}
+    LR_LABEL=${LABELS[$IDX]}
 
-echo "Array idx: $SLURM_ARRAY_TASK_ID"
-echo "LR:        $LR"
-echo "LR label:  $LR_LABEL"
-echo "Label:     $LABEL"
-echo "Config:    $CONFIG_PATH"
-echo "Overrides: $CONFIG_OVERRIDES_JSON"
+    export CONFIG_PATH="configs/train/med_lr.yaml"
+    export CONFIG_OVERRIDES_JSON="{\"optimizer\":{\"lr\":${LR}}}"
 
-bash scripts/slurm/train.slurm
+    echo "Sweep idx: $IDX"
+    echo "LR:        $LR"
+    echo "LR label:  $LR_LABEL"
+    echo "Label:     $LABEL"
+    echo "Config:    $CONFIG_PATH"
+    echo "Overrides: $CONFIG_OVERRIDES_JSON"
+
+    bash scripts/slurm/train.slurm
+done

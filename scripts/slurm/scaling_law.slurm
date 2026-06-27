@@ -18,6 +18,10 @@ echo "Job ID: $SLURM_JOB_ID"
 echo "Host: $(hostname)"
 echo "Started at: $(date)"
 
+export MASTER_ADDR="${MASTER_ADDR:-127.0.0.1}"
+export MASTER_PORT="${MASTER_PORT:-$(( 20000 + (${SLURM_JOB_ID:-0} % 40000) ))}"
+echo "Master: $MASTER_ADDR:$MASTER_PORT"
+
 module load miniforge3
 conda activate slm_ven
 
@@ -29,6 +33,9 @@ export TOKENIZERS_PARALLELISM=false
 
 nvidia-smi
 
-torchrun --nproc_per_node=4 -m src.slm.main --config_path configs/train/smoke.yaml
+torchrun --nproc_per_node=4 \
+    --master_addr "$MASTER_ADDR" \
+    --master_port "$MASTER_PORT" \
+    -m src.slm.main --config_path configs/train/smoke.yaml
 
 echo "Finished at: $(date)"

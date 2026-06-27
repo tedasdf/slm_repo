@@ -18,6 +18,10 @@ echo "Job ID:    $SLURM_JOB_ID"
 echo "Host:      $(hostname)"
 echo "Started:   $(date)"
 
+export MASTER_ADDR="${MASTER_ADDR:-127.0.0.1}"
+export MASTER_PORT="${MASTER_PORT:-$(( 20000 + (${SLURM_JOB_ID:-0} % 40000) ))}"
+echo "Master:    $MASTER_ADDR:$MASTER_PORT"
+
 # ── conda ──────────────────────────────────────────────────────────────────────
 # conda activate is a shell function defined by conda init — not available in
 # batch scripts unless you source the init script explicitly first.
@@ -56,7 +60,10 @@ mkdir -p "$HF_DATASETS_CACHE"
 nvidia-smi
 
 # ── run ───────────────────────────────────────────────────────────────────────
-torchrun --nproc_per_node=1 -m src.slm.main \
+torchrun --nproc_per_node=1 \
+    --master_addr "$MASTER_ADDR" \
+    --master_port "$MASTER_PORT" \
+    -m src.slm.main \
     --config_path configs/train/smoke.yaml
 
 echo "Finished: $(date)"

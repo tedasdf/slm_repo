@@ -42,6 +42,12 @@ echo "Config:    ${CONFIG_PATH:-configs/train/baseline.yaml}"
 echo "Overrides: $_OVERRIDES"
 echo "Run ID:    ${TAP_RUN_ID:-<not set>}"
 
+# Give each Slurm job its own torchrun rendezvous port. Without this,
+# concurrent array tasks on the same node all try the default 29500.
+export MASTER_ADDR="${MASTER_ADDR:-127.0.0.1}"
+export MASTER_PORT="${MASTER_PORT:-$(( 20000 + (${SLURM_JOB_ID:-0} % 40000) ))}"
+echo "Master:    $MASTER_ADDR:$MASTER_PORT"
+
 # ── conda ─────────────────────────────────────────────────────────────────────
 module load miniforge3
 # conda activate is a shell function — needs conda init sourced first
@@ -72,7 +78,10 @@ mkdir -p "$HF_DATASETS_CACHE"
 nvidia-smi
 
 # ── run ───────────────────────────────────────────────────────────────────────
-torchrun --nproc_per_node=1 -m src.slm.main \
+torchrun --nproc_per_node=1 \
+    --master_addr "$MASTER_ADDR" \
+    --master_port "$MASTER_PORT" \
+    -m src.slm.main \
     --config_path "${CONFIG_PATH:-configs/train/baseline.yaml}" \
     --overrides   "$_OVERRIDES"
 
