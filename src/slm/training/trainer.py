@@ -54,6 +54,19 @@ def _global_update_norm(before: list[tuple[nn.Parameter, torch.Tensor]]) -> floa
     return math.sqrt(total_sq)
 
 
+def _has_nan_or_inf_grad(model: nn.Module) -> bool:
+    with torch.no_grad():
+        for p in model.parameters():
+            if p.grad is None:
+                continue
+            grad = p.grad.detach()
+            if grad.is_sparse:
+                grad = grad.coalesce().values()
+            if not torch.isfinite(grad).all().item():
+                return True
+    return False
+
+
 def move_to_device(batch: Any, device: torch.device) -> Any:
     if torch.is_tensor(batch):
         return batch.to(device, non_blocking=True)
@@ -282,7 +295,9 @@ class Trainer:
                         torch.softmax(logits_detached, dim=-1).max(dim=-1).values.mean().item()
                     )
 
-        self.state.extra["diagnostics/has_nan_or_inf_loss"] = not torch.isfinite(loss)
+        self.state.extra["diagnostics/has_nan_or_inf_loss"] = (
+            not torch.isfinite(loss).all().item()
+        )
 
         out_dict: dict[str, Any] = outputs if isinstance(outputs, dict) else {"outputs": outputs}
         return loss, out_dict, targets
@@ -396,6 +411,13 @@ class Trainer:
             grad_norm = self._compute_grad_norm()
 
         self.state.extra["diagnostics/grad_norm"] = grad_norm
+        has_nan_or_inf_grad = _has_nan_or_inf_grad(self.model)
+        self.state.extra["diagnostics/has_nan_or_inf_grad"] = has_nan_or_inf_grad
+        self.state.extra["diagnostics/has_nan_or_inf"] = bool(
+            self.state.extra.get("diagnostics/has_nan_or_inf_loss", False)
+            or has_nan_or_inf_grad
+            or (grad_norm is not None and not math.isfinite(grad_norm))
+        )
         param_norm = _global_param_norm(self.model)
         params_before_step = _snapshot_trainable_params(self.model)
 

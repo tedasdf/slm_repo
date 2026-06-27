@@ -35,6 +35,7 @@ class PrintMetricsCallback(Callback):
         lr = _to_float(extra.get("optimizer/lr"))
         grad_norm = _to_float(extra.get("diagnostics/grad_norm"))
         elapsed = _to_float(extra.get("timing/elapsed_since_start_sec"))
+        has_nan_or_inf = bool(extra.get("diagnostics/has_nan_or_inf", False))
 
         parts = [f"{self.prefix} step={state.step}"]
 
@@ -46,6 +47,8 @@ class PrintMetricsCallback(Callback):
             parts.append(f"grad_norm={grad_norm:.4f}")
         if elapsed is not None:
             parts.append(f"elapsed={elapsed:.1f}s")
+        if has_nan_or_inf:
+            parts.append("nan_or_inf=True")
 
         print(" | ".join(parts))
 
@@ -174,6 +177,8 @@ class WandBCallback(Callback):
             "diagnostics/logit_l2": "primary/logit_l2",
             "diagnostics/mean_max_softmax_prob": "primary/mean_max_softmax_prob",
             "diagnostics/has_nan_or_inf_loss": "primary/has_nan_or_inf_loss",
+            "diagnostics/has_nan_or_inf_grad": "primary/has_nan_or_inf_grad",
+            "diagnostics/has_nan_or_inf": "primary/has_nan_or_inf",
             "timing/elapsed_since_start_sec": "train/elapsed_sec",
             "diagnostics/param_norm": "secondary/param_norm",
             "diagnostics/update_norm": "secondary/update_norm",
