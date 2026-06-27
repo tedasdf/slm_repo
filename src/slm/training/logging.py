@@ -159,36 +159,35 @@ class WandBCallback(Callback):
         extra = state.extra
 
         payload: dict[str, Any] = {
-            "trainer/step": state.step,
+            "train/step": state.step,
+            "train/epoch": state.epoch,
         }
 
         if state.last_train_loss is not None:
-            payload["train/loss"] = state.last_train_loss
+            payload["primary/train_loss"] = state.last_train_loss
 
-        for key in [
-            "optimizer/lr",
-            "diagnostics/grad_norm",
-            "diagnostics/attn_logit_max_layer0",
-            "diagnostics/attn_logit_max_layer0_log",
-            "timing/elapsed_since_start_sec",
-            "diagnostics/has_nan_or_inf_loss",
-        ]:
-            value = extra.get(key)
+        key_map = {
+            "optimizer/lr": "primary/lr",
+            "diagnostics/grad_norm": "primary/grad_norm",
+            "diagnostics/update_to_param_norm": "primary/update_to_param_norm",
+            "diagnostics/final_hidden_l2": "primary/final_hidden_l2",
+            "diagnostics/logit_l2": "primary/logit_l2",
+            "diagnostics/mean_max_softmax_prob": "primary/mean_max_softmax_prob",
+            "diagnostics/has_nan_or_inf_loss": "primary/has_nan_or_inf_loss",
+            "timing/elapsed_since_start_sec": "train/elapsed_sec",
+            "diagnostics/param_norm": "secondary/param_norm",
+            "diagnostics/update_norm": "secondary/update_norm",
+            "diagnostics/max_logit": "secondary/max_logit",
+            "diagnostics/min_logit": "secondary/min_logit",
+            "diagnostics/logsumexp_logits": "secondary/logsumexp_logits",
+            "diagnostics/attn_logit_max_layer0": "secondary/attn_logit_max_layer0",
+            "diagnostics/attn_logit_max_layer0_log": "secondary/attn_logit_max_layer0_log",
+        }
+
+        for src, dst in key_map.items():
+            value = extra.get(src)
             if value is not None:
-                payload[key] = value
-
-        if step_outputs:
-            for k, v in step_outputs.items():
-                if _is_number(v):
-                    payload[f"step/{k}"] = float(v)
-
-        if state.train_tokens_seen is not None:
-            payload["train/tokens_seen"] = state.train_tokens_seen
-
-        if state.train_samples_seen is not None:
-            payload["train/samples_seen"] = state.train_samples_seen
-
-        payload["trainer/epoch"] = state.epoch
+                payload[dst] = value
 
         self._wandb.log(payload, step=state.step)
 
@@ -200,15 +199,13 @@ class WandBCallback(Callback):
         eval_outputs = eval_outputs or {}
 
         payload: dict[str, Any] = {
-            "trainer/step": state.step,
+            "train/step": state.step,
+            "train/epoch": state.epoch,
         }
 
-        for k, v in eval_outputs.items():
-            if _is_number(v):
-                payload[f"eval/{k}"] = float(v)
-
-        if state.best_val_loss is not None:
-            payload["eval/best_val_loss"] = state.best_val_loss
+        val_loss = eval_outputs.get("val_loss")
+        if _is_number(val_loss):
+            payload["primary/val_loss"] = float(val_loss)
 
         self._wandb.log(payload, step=state.step)
 

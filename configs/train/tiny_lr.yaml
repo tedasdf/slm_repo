@@ -46,7 +46,7 @@ scheduler:
 logging:
   use_print_callback: true
   use_wandb: true
-  wandb_project: "slm-first-benchmark"
+  wandb_project: "slm-lr-no-warmup"
   wandb_run_name: null
   wandb_tags: ["tiny-lr", "fineweb-edu", "lr-sweep"]
 
