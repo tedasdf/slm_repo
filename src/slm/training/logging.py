@@ -221,6 +221,8 @@ class WandBCallback(Callback):
             model = getattr(trainer.model, "module", trainer.model)
             self._run.summary["config/num_layers"] = model.cfg.num_layers
             self._run.summary["config/model_dim"]  = model.cfg.model_dim
+            self._run.summary["config/core_params"] = model.count_core_params()
+            self._run.summary["config/total_params"] = model.count_params()
         except AttributeError:
             pass
 

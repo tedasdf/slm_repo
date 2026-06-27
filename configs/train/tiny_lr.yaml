@@ -46,9 +46,9 @@ scheduler:
 logging:
   use_print_callback: true
   use_wandb: true
-  wandb_project: "slm-lr-no-warmup"
+  wandb_project: "transformer_instability"
   wandb_run_name: null
-  wandb_tags: ["tiny-lr", "fineweb-edu", "lr-sweep"]
+  wandb_tags: []
 
 trainer:
   device: "cuda"

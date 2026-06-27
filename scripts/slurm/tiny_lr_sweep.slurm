@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-task=10
 #SBATCH --mem=64G
 #SBATCH --time=01:00:00
-#SBATCH --array=0-1
+#SBATCH --array=0-5
 #SBATCH --output=logs/slurm/%x-%A_%a.out
 #SBATCH --error=logs/slurm/%x-%A_%a.err
 
@@ -20,20 +20,23 @@
 #   mkdir -p logs/slurm
 #   sbatch scripts/slurm/tiny_lr_sweep.slurm
 #   # limit concurrent GPUs:
-#   sbatch --array=0-1%2 scripts/slurm/tiny_lr_sweep.slurm
+#   sbatch --array=0-5%2 scripts/slurm/tiny_lr_sweep.slurm
 
 set -eo pipefail
 
 # Full LR sweep:
 # LRS=(1e-4 3e-4 1e-3 3e-3 1e-2 3e-2 1e-1)
-LRS=(3e-1 1e0)
+LRS=(3e-3 1e-2 3e-2 1e-1 3e-1 1e0)
+LABELS=("stable / maybe slow" "stable-learning" "stable-learning or edge" "edge/plateau" "boundary or divergent" "break/divergent")
 LR=${LRS[$SLURM_ARRAY_TASK_ID]}
+LR_LABEL=${LABELS[$SLURM_ARRAY_TASK_ID]}
 
 export CONFIG_PATH="configs/train/tiny_lr.yaml"
-export CONFIG_OVERRIDES_JSON="{\"optimizer\":{\"lr\":${LR}},\"logging\":{\"wandb_tags\":[\"tiny-lr\",\"no-warmup\",\"high-lr-test\",\"fineweb-edu\"]}}"
+export CONFIG_OVERRIDES_JSON="{\"optimizer\":{\"lr\":${LR}}}"
 
 echo "Array idx: $SLURM_ARRAY_TASK_ID"
 echo "LR:        $LR"
+echo "LR label:  $LR_LABEL"
 echo "Config:    $CONFIG_PATH"
 echo "Overrides: $CONFIG_OVERRIDES_JSON"
 
