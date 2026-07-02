@@ -39,7 +39,7 @@ for IDX in "${!LRS[@]}"; do
     LR_LABEL=${LABELS[$IDX]}
 
     export CONFIG_PATH="configs/train/med_lr.yaml"
-    export CONFIG_OVERRIDES_JSON="{\"optimizer\":{\"lr\":${LR}},\"logging\":{\"wandb_run_name\":\"grad-norm-inspection-14M-lr-${LR}\",\"wandb_tags\":[\"grad-norm-inspection\",\"14M\",\"med-lr-sweep\"]}}"
+    export CONFIG_OVERRIDES_JSON="{\"optimizer\":{\"lr\":${LR}},\"logging\":{\"wandb_run_name\":null,\"wandb_tags\":[\"grad-norm-inspection\",\"14m\",\"med-lr\",\"lr-sweep\"]}}"
 
     echo "Sweep idx: $IDX"
     echo "LR:        $LR"

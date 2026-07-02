@@ -76,7 +76,22 @@ def _module_grad_norm(module: nn.Module) -> float | None:
             grads.append(p.grad.detach())
     if not grads:
         return None
-    return float(torch.nn.utils.get_total_norm(grads).item())
+    return _total_norm(grads)
+
+
+def _total_norm(tensors: list[torch.Tensor]) -> float:
+    get_total_norm = getattr(torch.nn.utils, "get_total_norm", None)
+    if get_total_norm is not None:
+        return float(get_total_norm(tensors).item())
+
+    total_sq = 0.0
+    with torch.no_grad():
+        for tensor in tensors:
+            value = tensor.detach()
+            if value.is_sparse:
+                value = value.coalesce().values()
+            total_sq += value.float().pow(2).sum().item()
+    return math.sqrt(total_sq)
 
 
 def _trainable_params(module: nn.Module) -> list[nn.Parameter]:
@@ -100,8 +115,8 @@ def _update_to_param_ratio(
             (p.detach().float() - old.float())
             for p, old in before
         ]
-        param_norm = float(torch.nn.utils.get_total_norm(old_params).item())
-        update_norm = float(torch.nn.utils.get_total_norm(updates).item())
+        param_norm = _total_norm(old_params)
+        update_norm = _total_norm(updates)
 
     if param_norm <= 0.0:
         return None
