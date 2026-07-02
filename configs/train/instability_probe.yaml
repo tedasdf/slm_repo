@@ -86,6 +86,8 @@ trainer:
   z_loss_coeff: 1e-4        # toggle: 1e-4 to test z-loss stabilisation
   independent_weight_decay: 1.0e-4
   log_attn_logits: true
+  log_grad_norm_inspect: true
+  log_optimizer_inspect: true
 
 
 data:

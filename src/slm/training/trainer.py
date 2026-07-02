@@ -67,6 +67,47 @@ def _has_nan_or_inf_grad(model: nn.Module) -> bool:
     return False
 
 
+def _module_grad_norm(module: nn.Module) -> float | None:
+    grads = []
+    with torch.no_grad():
+        for p in module.parameters():
+            if p.grad is None:
+                continue
+            grads.append(p.grad.detach())
+    if not grads:
+        return None
+    return float(torch.nn.utils.get_total_norm(grads).item())
+
+
+def _trainable_params(module: nn.Module) -> list[nn.Parameter]:
+    return [p for p in module.parameters() if p.requires_grad]
+
+
+def _snapshot_params(params: list[nn.Parameter]) -> list[tuple[nn.Parameter, torch.Tensor]]:
+    with torch.no_grad():
+        return [(p, p.detach().clone()) for p in params]
+
+
+def _update_to_param_ratio(
+    before: list[tuple[nn.Parameter, torch.Tensor]],
+) -> float | None:
+    if not before:
+        return None
+
+    with torch.no_grad():
+        old_params = [old.float() for _, old in before]
+        updates = [
+            (p.detach().float() - old.float())
+            for p, old in before
+        ]
+        param_norm = float(torch.nn.utils.get_total_norm(old_params).item())
+        update_norm = float(torch.nn.utils.get_total_norm(updates).item())
+
+    if param_norm <= 0.0:
+        return None
+    return update_norm / param_norm
+
+
 def move_to_device(batch: Any, device: torch.device) -> Any:
     if torch.is_tensor(batch):
         return batch.to(device, non_blocking=True)
@@ -131,7 +172,11 @@ class Trainer:
         self.state.extra["distributed/rank"] = self.rank
         self.state.extra["distributed/local_rank"] = self.local_rank
         self.state.extra["distributed/world_size"] = self.world_size
+        self._inspect_this_step = False
         
+    def _raw_model(self) -> nn.Module:
+        return getattr(self.model, "module", self.model)
+
     @classmethod
     def from_components(
         cls,
@@ -317,6 +362,118 @@ class Trainer:
             return None
         return math.sqrt(total_sq)
 
+    def _set_grad_norm_inspect_active(self, active: bool, *, reset: bool = False) -> None:
+        if not getattr(self.config, "log_grad_norm_inspect", False):
+            active = False
+
+        model = self._raw_model()
+        blocks = getattr(model, "blocks", ())
+        for layer_idx, block in enumerate(blocks):
+            if not hasattr(block, "grad_norm_inspect_active"):
+                continue
+            block.grad_norm_inspect_enabled = bool(getattr(self.config, "log_grad_norm_inspect", False))
+            block.grad_norm_inspect_active = active
+            block.grad_norm_inspect_layer_idx = layer_idx
+            if active and reset and hasattr(block, "last_resid_grad_norm"):
+                block.last_resid_grad_norm = None
+
+    def _collect_grad_norm_inspect(self) -> None:
+        if not getattr(self.config, "log_grad_norm_inspect", False):
+            return
+
+        model = self._raw_model()
+        blocks = getattr(model, "blocks", ())
+        if not any(getattr(block, "grad_norm_inspect_active", False) for block in blocks):
+            return
+
+        for layer_idx, block in enumerate(blocks):
+            resid_grad_norm = getattr(block, "last_resid_grad_norm", None)
+            if resid_grad_norm is not None:
+                self.state.extra[
+                    f"grad_norm_inspect/resid_grad_norm_{layer_idx}"
+                ] = float(resid_grad_norm)
+
+            attn_grad_norm = _module_grad_norm(block.attn)
+            if attn_grad_norm is not None:
+                self.state.extra[
+                    f"grad_norm_inspect/attn_param_grad_norm_{layer_idx}"
+                ] = attn_grad_norm
+
+            ffn_grad_norm = _module_grad_norm(block.mlp)
+            if ffn_grad_norm is not None:
+                self.state.extra[
+                    f"grad_norm_inspect/ffn_param_grad_norm_{layer_idx}"
+                ] = ffn_grad_norm
+
+    def _optimizer_inspect_active(self) -> bool:
+        return bool(
+            getattr(self.config, "log_optimizer_inspect", False)
+            and self._inspect_this_step
+        )
+
+    def _optimizer_inspect_snapshots(
+        self,
+    ) -> list[tuple[str, list[tuple[nn.Parameter, torch.Tensor]]]]:
+        if not self._optimizer_inspect_active():
+            return []
+
+        model = self._raw_model()
+        snapshots: list[tuple[str, list[tuple[nn.Parameter, torch.Tensor]]]] = []
+
+        tok_emb = getattr(model, "tok_emb", None)
+        if tok_emb is not None:
+            snapshots.append(
+                (
+                    "optimizer_inspect/embed_update_to_param",
+                    _snapshot_params(_trainable_params(tok_emb)),
+                )
+            )
+
+        lm_head = getattr(model, "lm_head", None)
+        if lm_head is not None:
+            snapshots.append(
+                (
+                    "optimizer_inspect/lm_head_update_to_param",
+                    _snapshot_params(_trainable_params(lm_head)),
+                )
+            )
+
+        blocks = getattr(model, "blocks", ())
+        for layer_idx, block in enumerate(blocks):
+            snapshots.append(
+                (
+                    f"optimizer_inspect/attn_update_to_param_{layer_idx}",
+                    _snapshot_params(_trainable_params(block.attn)),
+                )
+            )
+            snapshots.append(
+                (
+                    f"optimizer_inspect/ffn_update_to_param_{layer_idx}",
+                    _snapshot_params(_trainable_params(block.mlp)),
+                )
+            )
+            ln_params = (
+                _trainable_params(block.attn_norm)
+                + _trainable_params(block.mlp_norm)
+            )
+            snapshots.append(
+                (
+                    f"optimizer_inspect/ln_update_to_param_{layer_idx}",
+                    _snapshot_params(ln_params),
+                )
+            )
+
+        return snapshots
+
+    def _collect_optimizer_inspect(
+        self,
+        snapshots: list[tuple[str, list[tuple[nn.Parameter, torch.Tensor]]]],
+    ) -> None:
+        for key, before in snapshots:
+            ratio = _update_to_param_ratio(before)
+            if ratio is not None:
+                self.state.extra[key] = ratio
+
     def _fit_tokenizer_if_needed(self) -> None:
         if self.tokenizer is not None:
             return
@@ -398,9 +555,12 @@ class Trainer:
     def optimizer_step(self) -> dict[str, Any]:
         grad_norm = None
 
+        if self._use_grad_scaler():
+            self.grad_scaler.unscale_(self.optimizer)
+
+        self._collect_grad_norm_inspect()
+
         if self.config.clip_grad_norm is not None:
-            if self._use_grad_scaler():
-                self.grad_scaler.unscale_(self.optimizer)
             grad_norm = float(
                 torch.nn.utils.clip_grad_norm_(
                     self.model.parameters(),
@@ -420,6 +580,7 @@ class Trainer:
         )
         param_norm = _global_param_norm(self.model)
         params_before_step = _snapshot_trainable_params(self.model)
+        optimizer_inspect_before = self._optimizer_inspect_snapshots()
 
         if self._use_grad_scaler():
             self.grad_scaler.step(self.optimizer)
@@ -429,6 +590,8 @@ class Trainer:
 
         if self.config.independent_weight_decay is not None:
             _apply_independent_weight_decay(self.model, self.config.independent_weight_decay)
+
+        self._collect_optimizer_inspect(optimizer_inspect_before)
 
         update_norm = _global_update_norm(params_before_step)
         update_to_param_norm = update_norm / param_norm if param_norm > 0.0 else None
@@ -592,9 +755,22 @@ class Trainer:
                     if self.state.step >= self.config.max_steps or self.state.should_stop:
                         break
 
+                    is_accum_boundary = (
+                        (batch_idx + 1) % self.config.grad_accum_steps
+                    ) == 0
+                    next_optimizer_step = self.state.step + 1
+                    inspect_this_step = (
+                        next_optimizer_step % self.config.train_log_every == 0
+                    )
+                    self._inspect_this_step = inspect_this_step and is_accum_boundary
+                    self._set_grad_norm_inspect_active(
+                        inspect_this_step,
+                        reset=(inspect_this_step and batch_idx % self.config.grad_accum_steps == 0),
+                    )
+
                     step_outputs = self.train_step(batch)
 
-                    if ((batch_idx + 1) % self.config.grad_accum_steps) == 0:
+                    if is_accum_boundary:
                         opt_outputs = self.optimizer_step()
                         step_outputs.update(opt_outputs)
 

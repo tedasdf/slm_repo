@@ -194,6 +194,13 @@ class WandBCallback(Callback):
             if value is not None:
                 payload[dst] = value
 
+        for key, value in extra.items():
+            if (
+                key.startswith("grad_norm_inspect/")
+                or key.startswith("optimizer_inspect/")
+            ) and value is not None:
+                payload[key] = value
+
         self._wandb.log(payload, step=state.step)
 
     def on_eval_end(self, trainer: Any, eval_outputs: Optional[dict[str, Any]] = None) -> None:

@@ -35,10 +35,33 @@ class TransformerBlock(nn.Module):
         self.mlp_norm = build_norm(cfg.norm_type, cfg.model_dim, cfg.norm_eps)
         self.mlp = build_mlp(cfg)
 
+        self.grad_norm_inspect_enabled: bool = False
+        self.grad_norm_inspect_active: bool = False
+        self.grad_norm_inspect_layer_idx: int | None = None
+        self.last_resid_grad_norm: float | None = None
+
     def forward(self, x: torch.Tensor, **attn_kwargs: Any) -> torch.Tensor:
-        x = x + self.attn(self.attn_norm(x), **attn_kwargs)
-        x = x + self.mlp(self.mlp_norm(x))
-        return x
+        x0 = x
+        if (
+            self.grad_norm_inspect_enabled
+            and self.grad_norm_inspect_active
+            and x0.requires_grad
+        ):
+            x0.register_hook(self._record_resid_grad_norm)
+
+        attn_out = self.attn(self.attn_norm(x0), **attn_kwargs)
+        x1 = x0 + attn_out
+
+        mlp_out = self.mlp(self.mlp_norm(x1))
+        return x1 + mlp_out
+
+    def _record_resid_grad_norm(self, grad: torch.Tensor) -> torch.Tensor:
+        grad_norm = grad.detach().float().norm().item()
+        if self.last_resid_grad_norm is None:
+            self.last_resid_grad_norm = grad_norm
+        else:
+            self.last_resid_grad_norm = max(self.last_resid_grad_norm, grad_norm)
+        return grad
 
 
     def count_params(self) -> int:

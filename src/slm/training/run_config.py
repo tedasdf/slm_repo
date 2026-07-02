@@ -51,6 +51,8 @@ class TrainerConfig:
     z_loss_coeff: float = 0.0
     independent_weight_decay: Optional[float] = None
     log_attn_logits: bool = False
+    log_grad_norm_inspect: bool = False
+    log_optimizer_inspect: bool = False
 
     def __post_init__(self) -> None:
         if self.max_steps <= 0:
