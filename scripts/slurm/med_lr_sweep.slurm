@@ -29,17 +29,17 @@
 
 set -eo pipefail
 
-LRS=(3e-1 1e0 3e0)
-LABELS=("very high" "extreme" "likely divergent")
+LRS=(3e-2 5e-2 1e-1 2e-1 3e-1)
+LABELS=("high" "higher" "very high" "near divergent" "divergent")
 
-LABEL="med-lr-no-warmup-total-14492160-core-6300160"
+LABEL="grad norm inspection 14M"
 
 for IDX in "${!LRS[@]}"; do
     LR=${LRS[$IDX]}
     LR_LABEL=${LABELS[$IDX]}
 
     export CONFIG_PATH="configs/train/med_lr.yaml"
-    export CONFIG_OVERRIDES_JSON="{\"optimizer\":{\"lr\":${LR}}}"
+    export CONFIG_OVERRIDES_JSON="{\"optimizer\":{\"lr\":${LR}},\"logging\":{\"wandb_run_name\":\"grad-norm-inspection-14M-lr-${LR}\",\"wandb_tags\":[\"grad-norm-inspection\",\"14M\",\"med-lr-sweep\"]}}"
 
     echo "Sweep idx: $IDX"
     echo "LR:        $LR"
