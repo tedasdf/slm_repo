@@ -29,8 +29,8 @@
 
 set -eo pipefail
 
-LRS=(3e-2 5e-2 1e-1 2e-1 3e-1)
-LABELS=("high" "higher" "very high" "near divergent" "divergent")
+LRS=(0.035 0.04 0.045 0.05 0.06 0.07 0.08 0.09)
+LABELS=("lr-0.035" "lr-0.04" "lr-0.045" "lr-0.05" "lr-0.06" "lr-0.07" "lr-0.08" "lr-0.09")
 
 LABEL="grad norm inspection 14M"
 

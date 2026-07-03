@@ -28,7 +28,6 @@ model:
 
   init:
     init_type: "fan_in"
-    embedding_init_std: 1.0
 
 optimizer:
   optimizer_type: "adamw"

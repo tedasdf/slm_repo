@@ -1,71 +1,80 @@
+# med_lr.yaml
+#
+# Medium fp32 LR benchmark.
+# Target shape: L=8, H=8, d_model=256, d_ff=1024, seq_len=128, batch_size=32.
+
 model:
-  vocab_size: 32000
-  max_seq_len: 512
+  vocab_size: 16000
+  max_seq_len: 128
   num_layers: 8
-  model_dim: 512
+  model_dim: 256
+  norm_type: "layernorm"
+  norm_eps: 1.0e-6
+  use_bias: false
   tie_embeddings: false
 
   attention:
     attention_type: "baseline"
     num_heads: 8
     num_kv_heads: 8
-    head_dim: 64
+    head_dim: 32
     rope_base: 10000.0
-    qk_gain_init: 1.0
+    qk_norm: false
 
   mlp:
     mlp_type: "gelu"
+    hidden_dim: 1024
     mlp_mult: 4.0
 
   init:
-    init_std: 0.02
+    init_type: "fan_in"
 
 optimizer:
   optimizer_type: "adamw"
   lr: 3.0e-4
-  weight_decay: 1.0e-4
+  weight_decay: 0.1
   beta1: 0.9
   beta2: 0.95
   eps: 1.0e-8
 
 scheduler:
-  scheduler_type: "cosine_with_warmup"
-  warmup_steps: 5000
-  t_max: 100000
+  scheduler_type: "constant"
+  warmup_steps: 500
+  t_max: 10000
   eta_min: 1.0e-5
 
 logging:
   use_print_callback: true
   use_wandb: true
-  wandb_project: "slm-runs"
+  wandb_project: "transformer_instability"
   wandb_run_name: null
-  wandb_tags: ["baseline", "fineweb-edu"]
+  wandb_tags: []
 
 trainer:
   device: "cuda"
-  precision: "bf16"
+  precision: "fp32"
   seed: 42
 
-  train_tokenizer_before_fit: true
+  train_tokenizer_before_fit: false
   text_key: "text"
-  max_seq_len: 512
+  max_seq_len: 128
 
   max_steps: 10000
-  grad_accum_steps: 8
-  clip_grad_norm: 1.0
+  grad_accum_steps: 1
+  clip_grad_norm: null
 
-  train_log_every: 100
-  eval_every: 1000
-  max_eval_batches: 50
+  train_log_every: 50
+  eval_every: 200
+  max_eval_batches: 20
 
-  save_checkpoints: true
-  checkpoint_every: 1000
-  checkpoint_dir: "artifacts/checkpoints"
-  save_best_checkpoint: true
-  metric_name_for_best: "val_loss"
-  metric_mode_for_best: "min"
-  num_sanity_val_steps: 1
-  z_loss_coeff: 1.0e-4
+  save_checkpoints: false
+  save_best_checkpoint: false
+  num_sanity_val_steps: 0
+  enable_anomaly_detection: false
+
+  z_loss_coeff: 0.0
+  log_grad_norm_inspect: true
+  log_optimizer_inspect: true
 
 data:
   mode: text
@@ -73,32 +82,33 @@ data:
   source_type: huggingface
   dataset_name: HuggingFaceFW/fineweb-edu
   dataset_config_name: sample-10BT
+  train_split_name: train
   streaming: true
   text_fields: ["text"]
 
-  max_train_samples: null
-  max_val_samples: 2000
-  val_fraction: 0.005
+  val_fraction: 0.05
   split_seed: 42
   seed: 42
   shuffle: true
-  shuffle_buffer_size: 10000
+  shuffle_buffer_size: 1000
+  max_train_samples: 20000
+  max_val_samples: 500
 
-  seq_len: 512
+  seq_len: 128
   batch_size: 32
-  num_workers: 2
+  num_workers: 0
   pin_memory: true
   drop_last: true
 
 tokenizer:
   tokenizer_type: "bpe"
-  vocab_size: 32000
+  vocab_size: 16000
   min_frequency: 2
   pad_token: "<pad>"
   eos_token: "<eos>"
   unk_token: "<unk>"
   bos_token: null
   reuse_existing: true
-  tokenizer_train_samples: 500000
-  tokenizer_path: "artifacts/tokenizer/baseline/tokenizer.json"
-  allow_missing_tokenizer: true
+  tokenizer_train_samples: 10000
+  tokenizer_path: "artifacts/tokenizer/smoke/tokenizer.json"
+  allow_missing_tokenizer: false
