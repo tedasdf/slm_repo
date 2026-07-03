@@ -81,6 +81,7 @@ class InitConfig:
     # "fixed_std" : all linears use init_std (GPT-2 / fixed-std style)
     init_type: str = "fan_in"
     init_std: float = 0.02          # used only when init_type="fixed_std"
+    embedding_init_std: Optional[float] = None  # default: 1/sqrt(model_dim)
     tied_embed_init_std: Optional[float] = None  # unused when tie_embeddings=False
 
     def __post_init__(self) -> None:
@@ -89,6 +90,8 @@ class InitConfig:
             raise ValueError(f"init_type must be one of {valid}, got {self.init_type!r}")
         if self.init_std <= 0:
             raise ValueError("init_std must be > 0")
+        if self.embedding_init_std is not None and self.embedding_init_std <= 0:
+            raise ValueError("embedding_init_std must be > 0")
         if self.tied_embed_init_std is not None and self.tied_embed_init_std <= 0:
             raise ValueError("tied_embed_init_std must be > 0")
 

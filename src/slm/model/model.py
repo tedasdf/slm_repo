@@ -28,7 +28,11 @@ class TransformerLM(nn.Module):
         self._reset_parameters()
 
     def _reset_parameters(self) -> None:
-        embed_std = 1.0 / math.sqrt(self.cfg.model_dim)  # N(0, 1/√d) — paper spec
+        embed_std = (
+            self.cfg.init.embedding_init_std
+            if self.cfg.init.embedding_init_std is not None
+            else 1.0 / math.sqrt(self.cfg.model_dim)
+        )
         for module in self.modules():
             if isinstance(module, nn.Embedding):
                 nn.init.normal_(module.weight, mean=0.0, std=embed_std)
