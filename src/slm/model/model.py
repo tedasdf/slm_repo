@@ -33,7 +33,8 @@ class TransformerLM(nn.Module):
             if self.cfg.init.embedding_init_std is not None
             else 1.0 / math.sqrt(self.cfg.model_dim)
         )
-        for module in self.modules():
+        qk_gain_init = self.cfg.attention.qk_gain_init
+        for name, module in self.named_modules():
             if isinstance(module, nn.Embedding):
                 nn.init.normal_(module.weight, mean=0.0, std=embed_std)
             elif isinstance(module, nn.Linear):
@@ -41,10 +42,15 @@ class TransformerLM(nn.Module):
                     # truncated-normal, std = 1/√fan_in, truncated at ±2σ
                     fan_in = module.weight.shape[1]
                     std = 1.0 / math.sqrt(fan_in)
+                    if name.endswith(("q_proj", "k_proj")):
+                        std *= qk_gain_init
                     nn.init.trunc_normal_(module.weight, mean=0.0, std=std,
                                          a=-2 * std, b=2 * std)
                 else:  # fixed_std
-                    nn.init.normal_(module.weight, mean=0.0, std=self.cfg.init.init_std)
+                    std = self.cfg.init.init_std
+                    if name.endswith(("q_proj", "k_proj")):
+                        std *= qk_gain_init
+                    nn.init.normal_(module.weight, mean=0.0, std=std)
                 if module.bias is not None:
                     nn.init.zeros_(module.bias)
 

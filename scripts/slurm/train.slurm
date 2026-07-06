@@ -45,7 +45,10 @@ echo "Run ID:    ${TAP_RUN_ID:-<not set>}"
 # Give each Slurm job its own torchrun rendezvous port. Without this,
 # concurrent array tasks on the same node all try the default 29500.
 export MASTER_ADDR="${MASTER_ADDR:-127.0.0.1}"
-export MASTER_PORT="${MASTER_PORT:-$(( 20000 + (${SLURM_JOB_ID:-0} % 40000) ))}"
+if [[ -z "${MASTER_PORT:-}" ]]; then
+    MASTER_PORT="$(( 20000 + (${SLURM_JOB_ID:-0} % 40000) ))"
+    export MASTER_PORT
+fi
 echo "Master:    $MASTER_ADDR:$MASTER_PORT"
 
 # ── conda ─────────────────────────────────────────────────────────────────────

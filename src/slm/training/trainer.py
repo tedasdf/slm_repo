@@ -420,6 +420,67 @@ class Trainer:
                     f"grad_norm_inspect/ffn_param_grad_norm_{layer_idx}"
                 ] = ffn_grad_norm
 
+    def _set_attention_diagnostics_active(self, active: bool) -> None:
+        if not getattr(self.config, "log_attention_diagnostics", False):
+            active = False
+
+        model = self._raw_model()
+        blocks = getattr(model, "blocks", ())
+        for block in blocks:
+            attn = getattr(block, "attn", None)
+            if attn is None:
+                continue
+            if not hasattr(attn, "attention_diagnostics_active"):
+                continue
+            attn.log_attention_diagnostics = bool(
+                getattr(self.config, "log_attention_diagnostics", False)
+            )
+            attn.attention_diagnostics_active = active
+            attn.attention_entropy_threshold = float(
+                getattr(self.config, "attention_entropy_threshold", 0.5)
+            )
+            attn.qk_spectral_iters = int(getattr(self.config, "qk_spectral_iters", 2))
+
+    def _collect_attention_diagnostics(self) -> None:
+        if not getattr(self.config, "log_attention_diagnostics", False):
+            return
+
+        model = self._raw_model()
+        blocks = getattr(model, "blocks", ())
+        for layer_idx, block in enumerate(blocks):
+            attn = getattr(block, "attn", None)
+            if attn is None:
+                continue
+            diagnostics = getattr(attn, "last_attention_diagnostics", None)
+            if not diagnostics:
+                continue
+
+            prefix = f"attention_diagnostics/layer_{layer_idx}"
+            scalar_keys = (
+                "entropy_mean",
+                "low_entropy_frac",
+                "qk_spectral_mean",
+                "qk_spectral_max",
+            )
+            for key in scalar_keys:
+                value = diagnostics.get(key)
+                if value is not None:
+                    self.state.extra[f"{prefix}/{key}"] = float(value)
+
+            per_head_entropy = diagnostics.get("per_head_entropy_mean")
+            if isinstance(per_head_entropy, list):
+                for head_idx, value in enumerate(per_head_entropy):
+                    self.state.extra[
+                        f"{prefix}/head_{head_idx}_entropy_mean"
+                    ] = float(value)
+
+            per_head_low_entropy = diagnostics.get("per_head_low_entropy_frac")
+            if isinstance(per_head_low_entropy, list):
+                for head_idx, value in enumerate(per_head_low_entropy):
+                    self.state.extra[
+                        f"{prefix}/head_{head_idx}_low_entropy_frac"
+                    ] = float(value)
+
     def _optimizer_inspect_active(self) -> bool:
         return bool(
             getattr(self.config, "log_optimizer_inspect", False)
@@ -574,6 +635,7 @@ class Trainer:
             self.grad_scaler.unscale_(self.optimizer)
 
         self._collect_grad_norm_inspect()
+        self._collect_attention_diagnostics()
 
         if self.config.clip_grad_norm is not None:
             grad_norm = float(
@@ -622,6 +684,10 @@ class Trainer:
 
         lr = self.optimizer.param_groups[0]["lr"]
         self.state.extra["optimizer/lr"] = lr
+        for group in self.optimizer.param_groups:
+            if group.get("name") == "attention":
+                self.state.extra["optimizer/attention_lr"] = group["lr"]
+                break
 
         return {
             "grad_norm": grad_norm,
@@ -782,6 +848,7 @@ class Trainer:
                         inspect_this_step,
                         reset=(inspect_this_step and batch_idx % self.config.grad_accum_steps == 0),
                     )
+                    self._set_attention_diagnostics_active(inspect_this_step)
 
                     step_outputs = self.train_step(batch)
 

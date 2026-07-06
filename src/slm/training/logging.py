@@ -33,6 +33,7 @@ class PrintMetricsCallback(Callback):
 
         loss = _to_float(state.last_train_loss)
         lr = _to_float(extra.get("optimizer/lr"))
+        attention_lr = _to_float(extra.get("optimizer/attention_lr"))
         grad_norm = _to_float(extra.get("diagnostics/grad_norm"))
         elapsed = _to_float(extra.get("timing/elapsed_since_start_sec"))
         has_nan_or_inf = bool(extra.get("diagnostics/has_nan_or_inf", False))
@@ -43,6 +44,8 @@ class PrintMetricsCallback(Callback):
             parts.append(f"loss={loss:.6f}")
         if lr is not None:
             parts.append(f"lr={lr:.6e}")
+        if attention_lr is not None:
+            parts.append(f"attn_lr={attention_lr:.6e}")
         if grad_norm is not None:
             parts.append(f"grad_norm={grad_norm:.4f}")
         if elapsed is not None:
@@ -171,6 +174,7 @@ class WandBCallback(Callback):
 
         key_map = {
             "optimizer/lr": "primary/lr",
+            "optimizer/attention_lr": "primary/attention_lr",
             "diagnostics/grad_norm": "primary/grad_norm",
             "diagnostics/update_to_param_norm": "primary/update_to_param_norm",
             "diagnostics/final_hidden_l2": "primary/final_hidden_l2",
@@ -198,6 +202,7 @@ class WandBCallback(Callback):
             if (
                 key.startswith("grad_norm_inspect/")
                 or key.startswith("optimizer_inspect/")
+                or key.startswith("attention_diagnostics/")
             ) and value is not None:
                 payload[key] = value
 

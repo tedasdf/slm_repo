@@ -56,6 +56,8 @@ class AttentionConfig:
 
         if self.rope_base <= 0:
             raise ValueError("rope_base must be > 0")
+        if self.qk_gain_init <= 0:
+            raise ValueError("qk_gain_init must be > 0")
 
 
 @dataclass

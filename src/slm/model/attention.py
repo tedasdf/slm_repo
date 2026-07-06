@@ -44,6 +44,64 @@ class CausalSelfAttention(nn.Module):
 
         self.log_attn_logits: bool = False
         self.last_attn_logit_max: float | None = None
+        self.log_attention_diagnostics: bool = False
+        self.attention_diagnostics_active: bool = False
+        self.attention_entropy_threshold: float = 0.5
+        self.qk_spectral_iters: int = 2
+        self.last_attention_diagnostics: dict[str, float | list[float]] = {}
+
+    def _spectral_norm_proxy(self, qk: torch.Tensor) -> tuple[float, float]:
+        qk = qk.float()
+        vec = torch.ones(
+            (*qk.shape[:-1], 1),
+            device=qk.device,
+            dtype=qk.dtype,
+        )
+        vec = F.normalize(vec, dim=-2)
+        for _ in range(self.qk_spectral_iters):
+            vec = torch.matmul(qk.transpose(-2, -1), vec)
+            vec = F.normalize(vec, dim=-2)
+            vec = torch.matmul(qk, vec)
+            vec = F.normalize(vec, dim=-2)
+
+        qk_vec = torch.matmul(qk, vec)
+        sigma = qk_vec.norm(dim=-2).squeeze(-1)
+        return sigma.mean().item(), sigma.max().item()
+
+    def _record_attention_diagnostics(
+        self,
+        q: torch.Tensor,
+        k: torch.Tensor,
+        *,
+        scale: float,
+    ) -> None:
+        with torch.no_grad():
+            qk = torch.matmul(q.float(), k.float().transpose(-2, -1))
+            logits = qk * scale
+            seq_len = logits.size(-1)
+            causal_mask = torch.ones(
+                (seq_len, seq_len),
+                device=logits.device,
+                dtype=torch.bool,
+            ).tril()
+            masked_logits = logits.masked_fill(~causal_mask, float("-inf"))
+            probs = torch.softmax(masked_logits, dim=-1)
+            entropy = -(probs * probs.clamp_min(1e-12).log()).sum(dim=-1)
+
+            per_head_entropy = entropy.mean(dim=(0, 2))
+            low_entropy_frac = (
+                entropy < self.attention_entropy_threshold
+            ).float().mean(dim=(0, 2))
+            sigma_mean, sigma_max = self._spectral_norm_proxy(qk)
+
+            self.last_attention_diagnostics = {
+                "entropy_mean": entropy.mean().item(),
+                "low_entropy_frac": low_entropy_frac.mean().item(),
+                "qk_spectral_mean": sigma_mean,
+                "qk_spectral_max": sigma_max,
+                "per_head_entropy_mean": per_head_entropy.detach().cpu().tolist(),
+                "per_head_low_entropy_frac": low_entropy_frac.detach().cpu().tolist(),
+            }
 
     def _reshape_q(self, x: torch.Tensor) -> torch.Tensor:
         bsz, seq_len, _ = x.shape
@@ -83,12 +141,15 @@ class CausalSelfAttention(nn.Module):
         )
         q, k = apply_rope(q, k, cos, sin)
 
+        scale = 1.0 / math.sqrt(self.head_dim)
         if self.log_attn_logits:
             with torch.no_grad():
-                scale = 1.0 / math.sqrt(self.head_dim)
                 self.last_attn_logit_max = (
                     torch.matmul(q, k.transpose(-2, -1)).mul_(scale).max().item()
                 )
+
+        if self.log_attention_diagnostics and self.attention_diagnostics_active:
+            self._record_attention_diagnostics(q, k, scale=scale)
 
         y = F.scaled_dot_product_attention(
             q,
@@ -194,7 +255,6 @@ class ExclusionSelfAttention(CausalSelfAttention):
         return q_term + k_term + v_term + out_term + qk + softmax + scores_v + norm_excel
 
 
-
 class SlidingWindowAttention(CausalSelfAttention):
     def __init__(self, cfg: ModelConfig) -> None:
         super().__init__(cfg)
@@ -255,8 +315,6 @@ class SlidingWindowAttention(CausalSelfAttention):
         scores_v    = 2 * self.num_heads * self.window_size * self.head_dim
 
         return q_term + k_term + v_term + out_term + qk + softmax + scores_v
-
-
 
 
 class ResidualAttention():

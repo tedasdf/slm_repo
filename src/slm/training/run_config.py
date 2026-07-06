@@ -51,6 +51,9 @@ class TrainerConfig:
     z_loss_coeff: float = 0.0
     independent_weight_decay: Optional[float] = None
     log_attn_logits: bool = False
+    log_attention_diagnostics: bool = False
+    attention_entropy_threshold: float = 0.5
+    qk_spectral_iters: int = 2
     log_grad_norm_inspect: bool = False
     log_optimizer_inspect: bool = False
 
@@ -73,16 +76,27 @@ class TrainerConfig:
             raise ValueError("max_eval_batches must be > 0 when provided")
         if self.num_sanity_val_steps < 0:
             raise ValueError("num_sanity_val_steps must be >= 0")
+        if self.attention_entropy_threshold < 0:
+            raise ValueError("attention_entropy_threshold must be >= 0")
+        if self.qk_spectral_iters <= 0:
+            raise ValueError("qk_spectral_iters must be > 0")
 
 
 @dataclass
 class OptimizerConfig:
     optimizer_type: str = "adamw"
     lr: float = 3e-4
+    attention_lr_multiplier: float = 1.0
     weight_decay: float = 0.1
     beta1: float = 0.9
     beta2: float = 0.95
     eps: float = 1e-8
+
+    def __post_init__(self) -> None:
+        if self.lr <= 0:
+            raise ValueError("lr must be > 0")
+        if self.attention_lr_multiplier <= 0:
+            raise ValueError("attention_lr_multiplier must be > 0")
 
 @dataclass
 class SchedulerConfig:

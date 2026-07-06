@@ -35,11 +35,39 @@ def build_model(model_cfg: ModelConfig, precision: str = "bf16") -> nn.Module:
 
 def build_optimizer(model: nn.Module, optimizer_cfg: Any) -> torch.optim.Optimizer:
     optimizer_type = getattr(optimizer_cfg, "optimizer_type", "adamw").lower()
+    lr = optimizer_cfg.lr
+    attention_lr_multiplier = float(getattr(optimizer_cfg, "attention_lr_multiplier", 1.0))
+
+    params: Any
+    if attention_lr_multiplier != 1.0:
+        attn_params = []
+        other_params = []
+        for name, param in model.named_parameters():
+            if not param.requires_grad:
+                continue
+            if ".attn." in name:
+                attn_params.append(param)
+            else:
+                other_params.append(param)
+
+        params = []
+        if other_params:
+            params.append({"params": other_params, "lr": lr, "name": "default"})
+        if attn_params:
+            params.append(
+                {
+                    "params": attn_params,
+                    "lr": lr * attention_lr_multiplier,
+                    "name": "attention",
+                }
+            )
+    else:
+        params = model.parameters()
 
     if optimizer_type == "adamw":
         return torch.optim.AdamW(
-            model.parameters(),
-            lr=optimizer_cfg.lr,
+            params,
+            lr=lr,
             betas=(optimizer_cfg.beta1, optimizer_cfg.beta2),
             eps=optimizer_cfg.eps,
             weight_decay=optimizer_cfg.weight_decay,
