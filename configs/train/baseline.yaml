@@ -75,8 +75,12 @@ trainer:
 
   z_loss_coeff: 0.0
   log_attention_diagnostics: true
+  log_attention_head_details: false
   attention_entropy_threshold: 0.5
   qk_spectral_iters: 2
+  log_sharpness: true
+  sharpness_log_every: 500
+  sharpness_power_iters: 5
   log_grad_norm_inspect: true
   # log_optimizer_inspect: true
 

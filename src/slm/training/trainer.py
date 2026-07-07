@@ -188,6 +188,7 @@ class Trainer:
         self.state.extra["distributed/local_rank"] = self.local_rank
         self.state.extra["distributed/world_size"] = self.world_size
         self._inspect_this_step = False
+        self._sharpness_this_step = False
         
     def _raw_model(self) -> nn.Module:
         return getattr(self.model, "module", self.model)
@@ -377,6 +378,119 @@ class Trainer:
             return None
         return math.sqrt(total_sq)
 
+    def _compute_sharpness_largest_eigenvalue(
+        self,
+        loss: torch.Tensor,
+        params: list[nn.Parameter],
+    ) -> float | None:
+        if not params:
+            return None
+
+        grads = torch.autograd.grad(
+            loss,
+            params,
+            create_graph=True,
+            retain_graph=True,
+            allow_unused=True,
+        )
+
+        vec = [
+            torch.ones_like(p, memory_format=torch.preserve_format)
+            for p in params
+        ]
+
+        def _normalize(tensors: list[torch.Tensor]) -> list[torch.Tensor]:
+            total_sq = sum(t.detach().float().pow(2).sum() for t in tensors)
+            norm = torch.sqrt(total_sq).clamp_min(1e-12)
+            return [(t / norm).detach() for t in tensors]
+
+        def _hvp(vectors: list[torch.Tensor]) -> list[torch.Tensor]:
+            grad_dot_vec = None
+            for grad, vector in zip(grads, vectors):
+                if grad is None:
+                    continue
+                term = (grad * vector).sum()
+                grad_dot_vec = term if grad_dot_vec is None else grad_dot_vec + term
+
+            if grad_dot_vec is None:
+                return [torch.zeros_like(p) for p in params]
+
+            hessian_vec = torch.autograd.grad(
+                grad_dot_vec,
+                params,
+                retain_graph=True,
+                allow_unused=True,
+            )
+            return [
+                hv.detach() if hv is not None else torch.zeros_like(p)
+                for hv, p in zip(hessian_vec, params)
+            ]
+
+        vec = _normalize(vec)
+        hessian_vec = _hvp(vec)
+        for _ in range(max(int(getattr(self.config, "sharpness_power_iters", 5)) - 1, 0)):
+            vec = _normalize(hessian_vec)
+            hessian_vec = _hvp(vec)
+
+        numerator = sum(
+            (v.float() * hv.float()).sum()
+            for v, hv in zip(vec, hessian_vec)
+        )
+        denominator = sum(v.float().pow(2).sum() for v in vec).clamp_min(1e-12)
+        value = float((numerator / denominator).detach().item())
+        if not math.isfinite(value):
+            return None
+        return value
+
+    def _maybe_collect_sharpness(self, loss: torch.Tensor) -> None:
+        if not getattr(self.config, "log_sharpness", False):
+            return
+        if not self._sharpness_this_step:
+            return
+
+        groups = self._sharpness_param_groups()
+        global_value = self._compute_sharpness_largest_eigenvalue(
+            loss,
+            groups["global"],
+        )
+        if global_value is not None:
+            self.state.extra["sharpness/lambda_max_global"] = global_value
+
+        attn_value = self._compute_sharpness_largest_eigenvalue(
+            loss,
+            groups["attention"],
+        )
+        if attn_value is not None:
+            self.state.extra["sharpness/lambda_max_attention_block"] = attn_value
+
+        mlp_value = self._compute_sharpness_largest_eigenvalue(
+            loss,
+            groups["mlp"],
+        )
+        if mlp_value is not None:
+            self.state.extra["sharpness/lambda_max_mlp_block"] = mlp_value
+
+    def _sharpness_param_groups(self) -> dict[str, list[nn.Parameter]]:
+        model = self._raw_model()
+        blocks = getattr(model, "blocks", ())
+
+        attention_params: list[nn.Parameter] = []
+        mlp_params: list[nn.Parameter] = []
+        for block in blocks:
+            attn = getattr(block, "attn", None)
+            if attn is not None:
+                attention_params.extend(_trainable_params(attn))
+
+            mlp = getattr(block, "mlp", None)
+            if mlp is not None:
+                mlp_params.extend(_trainable_params(mlp))
+
+        return {
+            "global": [p for p in self.model.parameters() if p.requires_grad],
+            "attention": attention_params,
+            "mlp": mlp_params,
+        }
+
     def _set_grad_norm_inspect_active(self, active: bool, *, reset: bool = False) -> None:
         if not getattr(self.config, "log_grad_norm_inspect", False):
             active = False
@@ -386,8 +500,8 @@ class Trainer:
         for layer_idx, block in enumerate(blocks):
             if not hasattr(block, "grad_norm_inspect_active"):
                 continue
-            block.grad_norm_inspect_enabled = bool(getattr(self.config, "log_grad_norm_inspect", False))
-            block.grad_norm_inspect_active = active
+            block.grad_norm_inspect_enabled = False
+            block.grad_norm_inspect_active = False
             block.grad_norm_inspect_layer_idx = layer_idx
             if active and reset and hasattr(block, "last_resid_grad_norm"):
                 block.last_resid_grad_norm = None
@@ -398,27 +512,15 @@ class Trainer:
 
         model = self._raw_model()
         blocks = getattr(model, "blocks", ())
-        if not any(getattr(block, "grad_norm_inspect_active", False) for block in blocks):
+        if not self._inspect_this_step:
             return
 
         for layer_idx, block in enumerate(blocks):
-            resid_grad_norm = getattr(block, "last_resid_grad_norm", None)
-            if resid_grad_norm is not None:
-                self.state.extra[
-                    f"grad_norm_inspect/resid_grad_norm_{layer_idx}"
-                ] = float(resid_grad_norm)
-
             attn_grad_norm = _module_grad_norm(block.attn)
             if attn_grad_norm is not None:
                 self.state.extra[
                     f"grad_norm_inspect/attn_param_grad_norm_{layer_idx}"
                 ] = attn_grad_norm
-
-            ffn_grad_norm = _module_grad_norm(block.mlp)
-            if ffn_grad_norm is not None:
-                self.state.extra[
-                    f"grad_norm_inspect/ffn_param_grad_norm_{layer_idx}"
-                ] = ffn_grad_norm
 
     def _set_attention_diagnostics_active(self, active: bool) -> None:
         if not getattr(self.config, "log_attention_diagnostics", False):
@@ -436,10 +538,21 @@ class Trainer:
                 getattr(self.config, "log_attention_diagnostics", False)
             )
             attn.attention_diagnostics_active = active
+            attn.log_attention_head_details = bool(
+                getattr(self.config, "log_attention_head_details", False)
+            )
             attn.attention_entropy_threshold = float(
                 getattr(self.config, "attention_entropy_threshold", 0.5)
             )
             attn.qk_spectral_iters = int(getattr(self.config, "qk_spectral_iters", 2))
+
+    def _set_force_math_attention(self, active: bool) -> None:
+        model = self._raw_model()
+        blocks = getattr(model, "blocks", ())
+        for block in blocks:
+            attn = getattr(block, "attn", None)
+            if attn is not None and hasattr(attn, "force_math_attention"):
+                attn.force_math_attention = active
 
     def _collect_attention_diagnostics(self) -> None:
         if not getattr(self.config, "log_attention_diagnostics", False):
@@ -458,7 +571,9 @@ class Trainer:
             prefix = f"attention_diagnostics/layer_{layer_idx}"
             scalar_keys = (
                 "entropy_mean",
+                "head_entropy_min",
                 "low_entropy_frac",
+                "head_low_entropy_frac_max",
                 "qk_spectral_mean",
                 "qk_spectral_max",
             )
@@ -479,6 +594,13 @@ class Trainer:
                 for head_idx, value in enumerate(per_head_low_entropy):
                     self.state.extra[
                         f"{prefix}/head_{head_idx}_low_entropy_frac"
+                    ] = float(value)
+
+            per_head_qk_spectral = diagnostics.get("per_head_qk_spectral_max")
+            if isinstance(per_head_qk_spectral, list):
+                for head_idx, value in enumerate(per_head_qk_spectral):
+                    self.state.extra[
+                        f"{prefix}/head_{head_idx}_qk_spectral_max"
                     ] = float(value)
 
     def _optimizer_inspect_active(self) -> bool:
@@ -597,6 +719,7 @@ class Trainer:
 
         loss, outputs, targets = self._compute_loss(batch)
         loss_for_backward = loss / self.config.grad_accum_steps
+        self._maybe_collect_sharpness(loss)
 
         if self._use_grad_scaler():
             self.grad_scaler.scale(loss_for_backward).backward()
@@ -672,10 +795,20 @@ class Trainer:
 
         update_norm = _global_update_norm(params_before_step)
         update_to_param_norm = update_norm / param_norm if param_norm > 0.0 else None
+        lambda_max_global = self.state.extra.get("sharpness/lambda_max_global")
+        sharpness_update_scale = (
+            update_norm * lambda_max_global
+            if isinstance(lambda_max_global, (int, float))
+            else None
+        )
 
         self.state.extra["diagnostics/param_norm"] = param_norm
         self.state.extra["diagnostics/update_norm"] = update_norm
         self.state.extra["diagnostics/update_to_param_norm"] = update_to_param_norm
+        if sharpness_update_scale is not None and math.isfinite(sharpness_update_scale):
+            self.state.extra["sharpness/update_norm_times_lambda_max"] = (
+                sharpness_update_scale
+            )
 
         self.optimizer.zero_grad(set_to_none=True)
 
@@ -844,6 +977,14 @@ class Trainer:
                         next_optimizer_step % self.config.train_log_every == 0
                     )
                     self._inspect_this_step = inspect_this_step and is_accum_boundary
+                    self._sharpness_this_step = (
+                        bool(getattr(self.config, "log_sharpness", False))
+                        and is_accum_boundary
+                        and next_optimizer_step
+                        % int(getattr(self.config, "sharpness_log_every", 500))
+                        == 0
+                    )
+                    self._set_force_math_attention(self._sharpness_this_step)
                     self._set_grad_norm_inspect_active(
                         inspect_this_step,
                         reset=(inspect_this_step and batch_idx % self.config.grad_accum_steps == 0),

@@ -191,6 +191,10 @@ class WandBCallback(Callback):
             "diagnostics/logsumexp_logits": "secondary/logsumexp_logits",
             "diagnostics/attn_logit_max_layer0": "secondary/attn_logit_max_layer0",
             "diagnostics/attn_logit_max_layer0_log": "secondary/attn_logit_max_layer0_log",
+            "sharpness/lambda_max_global": "sharpness/lambda_max_global",
+            "sharpness/lambda_max_attention_block": "sharpness/lambda_max_attention_block",
+            "sharpness/lambda_max_mlp_block": "sharpness/lambda_max_mlp_block",
+            "sharpness/update_norm_times_lambda_max": "sharpness/update_norm_times_lambda_max",
         }
 
         for src, dst in key_map.items():

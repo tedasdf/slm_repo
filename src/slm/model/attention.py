@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import math
 
 import torch
@@ -9,6 +10,12 @@ import torch.nn.functional as F
 from .config import ModelConfig
 from .norm import RMSNorm
 from .rope import apply_rope, build_rope_cache
+
+try:
+    from torch.nn.attention import SDPBackend, sdpa_kernel
+except ImportError:  # pragma: no cover - older PyTorch fallback
+    SDPBackend = None
+    sdpa_kernel = None
 
 
 
@@ -46,11 +53,13 @@ class CausalSelfAttention(nn.Module):
         self.last_attn_logit_max: float | None = None
         self.log_attention_diagnostics: bool = False
         self.attention_diagnostics_active: bool = False
+        self.log_attention_head_details: bool = False
+        self.force_math_attention: bool = False
         self.attention_entropy_threshold: float = 0.5
         self.qk_spectral_iters: int = 2
         self.last_attention_diagnostics: dict[str, float | list[float]] = {}
 
-    def _spectral_norm_proxy(self, qk: torch.Tensor) -> tuple[float, float]:
+    def _spectral_norm_proxy(self, qk: torch.Tensor) -> tuple[float, float, list[float]]:
         qk = qk.float()
         vec = torch.ones(
             (*qk.shape[:-1], 1),
@@ -66,7 +75,12 @@ class CausalSelfAttention(nn.Module):
 
         qk_vec = torch.matmul(qk, vec)
         sigma = qk_vec.norm(dim=-2).squeeze(-1)
-        return sigma.mean().item(), sigma.max().item()
+        per_head_sigma_max = sigma.max(dim=0).values
+        return (
+            sigma.mean().item(),
+            sigma.max().item(),
+            per_head_sigma_max.detach().cpu().tolist(),
+        )
 
     def _record_attention_diagnostics(
         self,
@@ -92,16 +106,24 @@ class CausalSelfAttention(nn.Module):
             low_entropy_frac = (
                 entropy < self.attention_entropy_threshold
             ).float().mean(dim=(0, 2))
-            sigma_mean, sigma_max = self._spectral_norm_proxy(qk)
+            sigma_mean, sigma_max, per_head_sigma_max = self._spectral_norm_proxy(qk)
 
             self.last_attention_diagnostics = {
                 "entropy_mean": entropy.mean().item(),
+                "head_entropy_min": per_head_entropy.min().item(),
                 "low_entropy_frac": low_entropy_frac.mean().item(),
+                "head_low_entropy_frac_max": low_entropy_frac.max().item(),
                 "qk_spectral_mean": sigma_mean,
                 "qk_spectral_max": sigma_max,
-                "per_head_entropy_mean": per_head_entropy.detach().cpu().tolist(),
-                "per_head_low_entropy_frac": low_entropy_frac.detach().cpu().tolist(),
             }
+            if self.log_attention_head_details:
+                self.last_attention_diagnostics.update(
+                    {
+                        "per_head_entropy_mean": per_head_entropy.detach().cpu().tolist(),
+                        "per_head_low_entropy_frac": low_entropy_frac.detach().cpu().tolist(),
+                        "per_head_qk_spectral_max": per_head_sigma_max,
+                    }
+                )
 
     def _reshape_q(self, x: torch.Tensor) -> torch.Tensor:
         bsz, seq_len, _ = x.shape
@@ -151,14 +173,20 @@ class CausalSelfAttention(nn.Module):
         if self.log_attention_diagnostics and self.attention_diagnostics_active:
             self._record_attention_diagnostics(q, k, scale=scale)
 
-        y = F.scaled_dot_product_attention(
-            q,
-            k,
-            v,
-            attn_mask=None,
-            dropout_p=0.0,
-            is_causal=True,
+        sdpa_context = (
+            sdpa_kernel(SDPBackend.MATH)
+            if self.force_math_attention and sdpa_kernel is not None and SDPBackend is not None
+            else contextlib.nullcontext()
         )
+        with sdpa_context:
+            y = F.scaled_dot_product_attention(
+                q,
+                k,
+                v,
+                attn_mask=None,
+                dropout_p=0.0,
+                is_causal=True,
+            )
 
         y = y.transpose(1, 2).contiguous().view(bsz, seq_len, self.num_heads * self.head_dim)
         return self.out_proj(y)
