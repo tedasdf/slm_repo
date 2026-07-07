@@ -39,7 +39,7 @@ for IDX in "${!LRS[@]}"; do
     LR_LABEL=${LABELS[$IDX]}
 
     export CONFIG_PATH="configs/train/baseline.yaml"
-    export CONFIG_OVERRIDES_JSON="{\"optimizer\":{\"lr\":${LR}},\"logging\":{\"wandb_run_name\":null,\"wandb_tags\":[\"14m\",\"lr-sweep\",\"finding-baseline\"]}}"
+    export CONFIG_OVERRIDES_JSON="{\"optimizer\":{\"lr\":${LR}},\"logging\":{\"wandb_run_name\":null,\"wandb_tags\":[\"14m\",\"lr-sweep\",\"finding-baseline\",\"10k_step\"]}}"
 
     echo "Sweep idx: $IDX"
     echo "LR:        $LR"
