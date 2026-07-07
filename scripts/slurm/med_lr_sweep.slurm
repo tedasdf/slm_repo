@@ -29,8 +29,8 @@
 
 set -eo pipefail
 
-LRS=(1e-4 3e-4 6e-4 1e-3 3e-3 6e-3 1e-2 3e-2 6e-2)
-LABELS=("lr-0.0001" "lr-0.0003" "lr-0.0006" "lr-0.001" "lr-0.003" "lr-0.006" "lr-0.01" "lr-0.03" "lr-0.06")
+LRS=(1e-4 3e-4 6e-4 1e-3 3e-3)
+LABELS=("lr-0.0001" "lr-0.0003" "lr-0.0006" "lr-0.001" "lr-0.003")
 
 LABEL="grad norm inspection 14M"
 

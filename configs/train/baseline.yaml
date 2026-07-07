@@ -40,8 +40,8 @@ optimizer:
 
 scheduler:
   scheduler_type: "cosine_with_warmup"
-  warmup_steps: 90
-  t_max: 3000
+  warmup_steps: 300
+  t_max: 10000
   eta_min: 0.0
 
 logging:
