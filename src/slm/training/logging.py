@@ -75,22 +75,6 @@ class PrintMetricsCallback(Callback):
         print(f"[error] step={trainer.state.step} | {type(exc).__name__}: {exc}")
 
 
-class AttnLogitCallback(Callback):
-    """Tracks max attention logit (pre-softmax) of layer 0 across all b/h/i/j."""
-
-    def on_run_start(self, trainer: Any) -> None:
-        model = getattr(trainer.model, "module", trainer.model)
-        model.blocks[0].attn.log_attn_logits = True
-
-    def on_step_end(self, trainer: Any, step_outputs: Optional[dict[str, Any]] = None) -> None:
-        import math
-        model = getattr(trainer.model, "module", trainer.model)
-        val = model.blocks[0].attn.last_attn_logit_max
-        if val is not None:
-            trainer.state.extra["diagnostics/attn_logit_max_layer0"] = val
-            if val > 0:
-                trainer.state.extra["diagnostics/attn_logit_max_layer0_log"] = math.log(val)
-
 
 class WandBCallback(Callback):
     def __init__(
@@ -204,8 +188,8 @@ class WandBCallback(Callback):
 
         for key, value in extra.items():
             if (
-                key.startswith("grad_norm_inspect/")
-                or key.startswith("optimizer_inspect/")
+                # key.startswith("grad_norm_inspect/") or
+                key.startswith("optimizer_inspect/")
                 or key.startswith("attention_diagnostics/")
             ) and value is not None:
                 payload[key] = value
@@ -261,3 +245,23 @@ class WandBCallback(Callback):
         self._run.summary["failed"] = True
         self._run.summary["error_type"] = type(exc).__name__
         self._run.summary["error_message"] = str(exc)
+
+
+##
+#attn/layer_1/gap_p95
+# attn/layer_1/absmax_p95
+# attn/layer_1/maxprob_frac_gt_0.9
+# attn/layer_1/entropy_mean
+# attn/layer_1/entropy_p05
+
+# attn/layer_4/gap_p95
+# attn/layer_4/absmax_p95
+# attn/layer_4/maxprob_frac_gt_0.9
+# attn/layer_4/entropy_mean
+# attn/layer_4/entropy_p05
+
+# attn/layer_8/gap_p95
+# attn/layer_8/absmax_p95
+# attn/layer_8/maxprob_frac_gt_0.9
+# attn/layer_8/entropy_mean
+# attn/layer_8/entropy_p05

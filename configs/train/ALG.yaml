@@ -19,7 +19,7 @@ model:
     num_kv_heads: 8
     head_dim: 32
     rope_base: 10000.0
-    qk_norm: true
+    qk_norm: false
 
   mlp:
     mlp_type: "gelu"
@@ -31,7 +31,7 @@ model:
 
 optimizer:
   optimizer_type: "adamw"
-  lr: 3.0e-4
+  lr: 3.0e-3
   attention_lr_multiplier: 1.0
   weight_decay: 0.02
   beta1: 0.9
@@ -77,9 +77,9 @@ trainer:
   log_attention_diagnostics: true
   attention_entropy_threshold: 0.5
   qk_spectral_iters: 2
-  # log_sharpness: true
+  log_sharpness: false
   # sharpness_log_every: 500
-  sharpness_power_iters: 5
+  # sharpness_power_iters: 5
   log_grad_norm_inspect: false
   log_optimizer_inspect: false
   log_attention_head_details: false

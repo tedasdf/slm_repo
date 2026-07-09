@@ -299,9 +299,15 @@ class Trainer:
         return out
 
     def _compute_loss(self, batch: Any) -> tuple[torch.Tensor, dict[str, Any], Any | None]:
+        # 1. prepare batch: tokenize raw text if needed, move tensors to device
+        # and split the batch into model input and supervised targets 
         batch = self._tokenize_batch_if_needed(batch)
         batch = move_to_device(batch, self.device)
         model_inputs, targets = self._extract_model_inputs(batch)
+
+        # 2. Forward pass under autocast if using fp16/bf16
+        # The model may either return:
+        # - a dict containing "loss" and optionally "logits"
 
         with self._autocast_context():
             if isinstance(model_inputs, dict):
@@ -326,12 +332,12 @@ class Trainer:
                     raise ValueError("targets are required when using loss_fn")
                 loss = self.loss_fn(outputs, targets)
 
-        z_loss_coeff = getattr(self.config, "z_loss_coeff", 0.0)
-        if z_loss_coeff > 0.0 and isinstance(outputs, dict) and "logits" in outputs:
-            log_z = torch.logsumexp(outputs["logits"], dim=-1)  # [B, T]
-            z_loss = z_loss_coeff * (log_z ** 2).mean()
-            loss = loss + z_loss
-            self.state.extra["diagnostics/z_loss"] = float(z_loss.detach().item())
+        # z_loss_coeff = getattr(self.config, "z_loss_coeff", 0.0)
+        # if z_loss_coeff > 0.0 and isinstance(outputs, dict) and "logits" in outputs:
+        #     log_z = torch.logsumexp(outputs["logits"], dim=-1)  # [B, T]
+        #     z_loss = z_loss_coeff * (log_z ** 2).mean()
+        #     loss = loss + z_loss
+        #     self.state.extra["diagnostics/z_loss"] = float(z_loss.detach().item())
 
         if isinstance(outputs, dict):
             with torch.no_grad():
@@ -521,19 +527,31 @@ class Trainer:
                 self.state.extra[
                     f"grad_norm_inspect/attn_param_grad_norm_{layer_idx}"
                 ] = attn_grad_norm
+    def _attention_diagnostic_layers(self) -> set[int] | None:
+        layers = getattr(self.config, "attention_diagnostic_layers", None)
+        if layers is None:
+            return None
+        return {int(x) for x in layers}
 
     def _set_attention_diagnostics_active(self, active: bool) -> None:
         if not getattr(self.config, "log_attention_diagnostics", False):
             active = False
 
+        selected_layers = self._attention_diagnostic_layers()
+
         model = self._raw_model()
         blocks = getattr(model, "blocks", ())
-        for block in blocks:
+        for layer_idx, block in enumerate(blocks):
             attn = getattr(block, "attn", None)
             if attn is None:
                 continue
             if not hasattr(attn, "attention_diagnostics_active"):
                 continue
+
+            layer_active = active and (
+                selected_layers is None or layer_idx in selected_layers
+            )
+
             attn.log_attention_diagnostics = bool(
                 getattr(self.config, "log_attention_diagnostics", False)
             )
@@ -570,38 +588,18 @@ class Trainer:
 
             prefix = f"attention_diagnostics/layer_{layer_idx}"
             scalar_keys = (
+                "absmax_p95",
+                "gap_p95",
+                "maxprob_frac_gt_0.9",
                 "entropy_mean",
-                "head_entropy_min",
-                "low_entropy_frac",
-                "head_low_entropy_frac_max",
-                "qk_spectral_mean",
-                "qk_spectral_max",
+                "entropy_p05",
             )
             for key in scalar_keys:
                 value = diagnostics.get(key)
                 if value is not None:
                     self.state.extra[f"{prefix}/{key}"] = float(value)
 
-            per_head_entropy = diagnostics.get("per_head_entropy_mean")
-            if isinstance(per_head_entropy, list):
-                for head_idx, value in enumerate(per_head_entropy):
-                    self.state.extra[
-                        f"{prefix}/head_{head_idx}_entropy_mean"
-                    ] = float(value)
-
-            per_head_low_entropy = diagnostics.get("per_head_low_entropy_frac")
-            if isinstance(per_head_low_entropy, list):
-                for head_idx, value in enumerate(per_head_low_entropy):
-                    self.state.extra[
-                        f"{prefix}/head_{head_idx}_low_entropy_frac"
-                    ] = float(value)
-
-            per_head_qk_spectral = diagnostics.get("per_head_qk_spectral_max")
-            if isinstance(per_head_qk_spectral, list):
-                for head_idx, value in enumerate(per_head_qk_spectral):
-                    self.state.extra[
-                        f"{prefix}/head_{head_idx}_qk_spectral_max"
-                    ] = float(value)
+            
 
     def _optimizer_inspect_active(self) -> bool:
         return bool(
@@ -972,11 +970,17 @@ class Trainer:
                     is_accum_boundary = (
                         (batch_idx + 1) % self.config.grad_accum_steps
                     ) == 0
+
                     next_optimizer_step = self.state.step + 1
+
                     inspect_this_step = (
                         next_optimizer_step % self.config.train_log_every == 0
                     )
+
                     self._inspect_this_step = inspect_this_step and is_accum_boundary
+
+
+                    #################################################NOT USED##############################################
                     self._sharpness_this_step = (
                         bool(getattr(self.config, "log_sharpness", False))
                         and is_accum_boundary
@@ -985,11 +989,14 @@ class Trainer:
                         == 0
                     )
                     self._set_force_math_attention(self._sharpness_this_step)
+                    ##############################################################################################################
+
                     self._set_grad_norm_inspect_active(
-                        inspect_this_step,
-                        reset=(inspect_this_step and batch_idx % self.config.grad_accum_steps == 0),
+                        self._inspect_this_step,
+                        reset=self._inspect_this_step,
                     )
-                    self._set_attention_diagnostics_active(inspect_this_step)
+
+                    self._set_attention_diagnostics_active(self._inspect_this_step)
 
                     step_outputs = self.train_step(batch)
 

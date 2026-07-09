@@ -72,7 +72,7 @@ trainer:
   num_sanity_val_steps: 0
   enable_anomaly_detection: false
 
-  z_loss_coeff: 0.0
+  # z_loss_coeff: 0.0
 
 data:
   mode: text

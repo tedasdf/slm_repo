@@ -48,15 +48,14 @@ class TrainerConfig:
     metric_mode_for_best: str = "min"
 
     num_sanity_val_steps: int = 0
-    z_loss_coeff: float = 0.0
+    # z_loss_coeff: float = 0.0
     independent_weight_decay: Optional[float] = None
-    log_attn_logits: bool = False
     log_attention_diagnostics: bool = False
     log_attention_head_details: bool = False
     attention_entropy_threshold: float = 0.5
     qk_spectral_iters: int = 2
     log_sharpness: bool = False
-    sharpness_log_every: int = 500
+    # sharpness_log_every: int = 500
     sharpness_power_iters: int = 5
     log_grad_norm_inspect: bool = False
     log_optimizer_inspect: bool = False
@@ -84,10 +83,6 @@ class TrainerConfig:
             raise ValueError("attention_entropy_threshold must be >= 0")
         if self.qk_spectral_iters <= 0:
             raise ValueError("qk_spectral_iters must be > 0")
-        if self.sharpness_log_every <= 0:
-            raise ValueError("sharpness_log_every must be > 0")
-        if self.sharpness_power_iters <= 0:
-            raise ValueError("sharpness_power_iters must be > 0")
 
 
 @dataclass

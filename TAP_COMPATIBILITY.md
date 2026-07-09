@@ -99,7 +99,6 @@ Implemented as `LinearLR` + `CosineAnnealingLR` via `SequentialLR`.
 | Knob | Config key | Default | Notes |
 |---|---|---|---|
 | QK-norm | `attention.qk_norm` | `false` | RMSNorm(head_dim) on Q and K per head |
-| Z-loss | `trainer.z_loss_coeff` | `0.0` | Set to `1e-4` for paper spec |
 | GQA | `attention.num_kv_heads` | = num_heads | Set < num_heads for GQA |
 | Sliding window attn | `attention.window_size` | null | Requires `attention_type: swa` |
 | Exclusion self-attn (XSA) | `attention.attention_type` | `baseline` | Custom variant |

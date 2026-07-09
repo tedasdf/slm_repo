@@ -30,7 +30,7 @@
 set -eo pipefail
 
 LRS=(1e-4 3e-4 6e-4 1e-3 3e-3)
-LABELS=("lr-0.0001" "lr-0.0003" "lr-0.0006" "lr-0.001" "lr-0.003")
+LABELS=("lr-0.0001" "lr-0.0003" "lr-0.0006" "lr-0.001" "lr-0.003" )
 
 LABEL="grad norm inspection 14M"
 
@@ -39,7 +39,7 @@ for IDX in "${!LRS[@]}"; do
     LR_LABEL=${LABELS[$IDX]}
 
     export CONFIG_PATH="configs/train/baseline.yaml"
-    export CONFIG_OVERRIDES_JSON="{\"optimizer\":{\"lr\":${LR}},\"logging\":{\"wandb_run_name\":null,\"wandb_tags\":[\"14m\",\"lr-sweep\",\"finding-baseline\",\"10k_step\"]}}"
+    export CONFIG_OVERRIDES_JSON="{\"optimizer\":{\"lr\":${LR}},\"logging\":{\"wandb_run_name\":null,\"wandb_tags\":[\"14m\",\"lr-sweep\",\"finding-baseline\",\"10kstep\", \"sharpness_observed\"}}"
 
     echo "Sweep idx: $IDX"
     echo "LR:        $LR"

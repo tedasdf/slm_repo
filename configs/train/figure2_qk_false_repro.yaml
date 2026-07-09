@@ -79,9 +79,8 @@ trainer:
   num_sanity_val_steps: 0
 
   enable_anomaly_detection: false
-  z_loss_coeff: 1.0e-4
+  # z_loss_coeff: 1.0e-4
   independent_weight_decay: 1.0e-4
-  log_attn_logits: true
   # log_grad_norm_inspect: true
   # log_optimizer_inspect: true
 

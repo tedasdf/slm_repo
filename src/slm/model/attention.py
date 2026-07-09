@@ -49,7 +49,6 @@ class CausalSelfAttention(nn.Module):
             self.q_norm = None
             self.k_norm = None
 
-        self.log_attn_logits: bool = False
         self.last_attn_logit_max: float | None = None
         self.log_attention_diagnostics: bool = False
         self.attention_diagnostics_active: bool = False
@@ -89,41 +88,113 @@ class CausalSelfAttention(nn.Module):
         *,
         scale: float,
     ) -> None:
+        """Record minimal attention-logit-growth diagnostics.
+
+        q, k shape assumed: [B, H, T, D]
+        logits shape: [B, H, T, T]
+
+        Metrics:
+        - absmax_p95: high-tail magnitude of valid causal attention logits
+        - gap_p95: high-tail top1 - top2 logit gap per query
+        - maxprob_frac_gt_0.9: fraction of queries with very peaked attention
+        - entropy_mean: average attention entropy
+        - entropy_p05: low-tail entropy, catches partial collapse
+        """
         with torch.no_grad():
-            qk = torch.matmul(q.float(), k.float().transpose(-2, -1))
-            logits = qk * scale
+            logits = torch.matmul(q.float(), k.float().transpose(-2, -1)) * scale
+
             seq_len = logits.size(-1)
             causal_mask = torch.ones(
                 (seq_len, seq_len),
                 device=logits.device,
                 dtype=torch.bool,
             ).tril()
-            masked_logits = logits.masked_fill(~causal_mask, float("-inf"))
-            probs = torch.softmax(masked_logits, dim=-1)
-            entropy = -(probs * probs.clamp_min(1e-12).log()).sum(dim=-1)
 
-            per_head_entropy = entropy.mean(dim=(0, 2))
-            low_entropy_frac = (
-                entropy < self.attention_entropy_threshold
-            ).float().mean(dim=(0, 2))
-            sigma_mean, sigma_max, per_head_sigma_max = self._spectral_norm_proxy(qk)
+            # Broadcast causal mask over [B, H, T, T].
+            masked_logits = logits.masked_fill(~causal_mask, float("-inf"))
+
+            # Valid logits only, excluding masked future positions.
+            valid_logits = logits[..., causal_mask]
+
+            def _quantile_or_none(x: torch.Tensor, q_value: float) -> float | None:
+                x = x[torch.isfinite(x)]
+                if x.numel() == 0:
+                    return None
+                return float(torch.quantile(x, q_value).item())
+
+            # 1. Logit magnitude growth.
+            absmax_p95 = _quantile_or_none(valid_logits.abs(), 0.95)
+
+            # 2. Attention probabilities.
+            probs = torch.softmax(masked_logits, dim=-1)
+
+            # 3. Entropy per query: shape [B, H, T].
+            probs_safe = probs.clamp_min(1e-12)
+            entropy = -(probs * probs_safe.log()).sum(dim=-1)
+
+            entropy_mean = float(entropy.mean().item())
+            entropy_p05 = _quantile_or_none(entropy.flatten(), 0.05)
+
+            # 4. Max probability concentration.
+            max_prob = probs.max(dim=-1).values
+            maxprob_frac_gt_0_9 = float((max_prob > 0.9).float().mean().item())
+
+            # 5. Top1 - top2 logit gap.
+            # For position 0 there is only one valid causal key, so top2 gives -inf.
+            # We filter those out.
+            top2 = masked_logits.topk(k=2, dim=-1).values
+            gap = top2[..., 0] - top2[..., 1]
+            gap_p95 = _quantile_or_none(gap.flatten(), 0.95)
 
             self.last_attention_diagnostics = {
-                "entropy_mean": entropy.mean().item(),
-                "head_entropy_min": per_head_entropy.min().item(),
-                "low_entropy_frac": low_entropy_frac.mean().item(),
-                "head_low_entropy_frac_max": low_entropy_frac.max().item(),
-                "qk_spectral_mean": sigma_mean,
-                "qk_spectral_max": sigma_max,
+                "absmax_p95": absmax_p95,
+                "gap_p95": gap_p95,
+                "maxprob_frac_gt_0.9": maxprob_frac_gt_0_9,
+                "entropy_mean": entropy_mean,
+                "entropy_p05": entropy_p05,
             }
-            if self.log_attention_head_details:
-                self.last_attention_diagnostics.update(
-                    {
-                        "per_head_entropy_mean": per_head_entropy.detach().cpu().tolist(),
-                        "per_head_low_entropy_frac": low_entropy_frac.detach().cpu().tolist(),
-                        "per_head_qk_spectral_max": per_head_sigma_max,
-                    }
-                )
+    # def _record_attention_diagnostics(
+    #     self,
+    #     q: torch.Tensor,
+    #     k: torch.Tensor,
+    #     *,
+    #     scale: float,
+    # ) -> None:
+    #     with torch.no_grad():
+    #         qk = torch.matmul(q.float(), k.float().transpose(-2, -1))
+    #         logits = qk * scale
+    #         seq_len = logits.size(-1)
+    #         causal_mask = torch.ones(
+    #             (seq_len, seq_len),
+    #             device=logits.device,
+    #             dtype=torch.bool,
+    #         ).tril()
+    #         masked_logits = logits.masked_fill(~causal_mask, float("-inf"))
+    #         probs = torch.softmax(masked_logits, dim=-1)
+    #         entropy = -(probs * probs.clamp_min(1e-12).log()).sum(dim=-1)
+
+    #         per_head_entropy = entropy.mean(dim=(0, 2))
+    #         low_entropy_frac = (
+    #             entropy < self.attention_entropy_threshold
+    #         ).float().mean(dim=(0, 2))
+    #         sigma_mean, sigma_max, per_head_sigma_max = self._spectral_norm_proxy(qk)
+
+    #         self.last_attention_diagnostics = {
+    #             "entropy_mean": entropy.mean().item(),
+    #             "head_entropy_min": per_head_entropy.min().item(),
+    #             "low_entropy_frac": low_entropy_frac.mean().item(),
+    #             "head_low_entropy_frac_max": low_entropy_frac.max().item(),
+    #             "qk_spectral_mean": sigma_mean,
+    #             "qk_spectral_max": sigma_max,
+    #         }
+    #         if self.log_attention_head_details:
+    #             self.last_attention_diagnostics.update(
+    #                 {
+    #                     "per_head_entropy_mean": per_head_entropy.detach().cpu().tolist(),
+    #                     "per_head_low_entropy_frac": low_entropy_frac.detach().cpu().tolist(),
+    #                     "per_head_qk_spectral_max": per_head_sigma_max,
+    #                 }
+    #             )
 
     def _reshape_q(self, x: torch.Tensor) -> torch.Tensor:
         bsz, seq_len, _ = x.shape
@@ -164,11 +235,7 @@ class CausalSelfAttention(nn.Module):
         q, k = apply_rope(q, k, cos, sin)
 
         scale = 1.0 / math.sqrt(self.head_dim)
-        if self.log_attn_logits:
-            with torch.no_grad():
-                self.last_attn_logit_max = (
-                    torch.matmul(q, k.transpose(-2, -1)).mul_(scale).max().item()
-                )
+
 
         if self.log_attention_diagnostics and self.attention_diagnostics_active:
             self._record_attention_diagnostics(q, k, scale=scale)
