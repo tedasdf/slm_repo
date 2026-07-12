@@ -53,7 +53,6 @@ class TrainerConfig:
     log_attention_diagnostics: bool = False
     log_attention_head_details: bool = False
     attention_diagnostic_layers: Optional[list[int]] = None
-    attention_score_multipliers: list[float] = field(default_factory=lambda: [1.0])
     step_zero_attention_calibration: bool = False
     attention_entropy_threshold: float = 0.5
     qk_spectral_iters: int = 2
@@ -86,8 +85,6 @@ class TrainerConfig:
             raise ValueError("attention_entropy_threshold must be >= 0")
         if self.qk_spectral_iters <= 0:
             raise ValueError("qk_spectral_iters must be > 0")
-        if any(alpha <= 0 for alpha in self.attention_score_multipliers):
-            raise ValueError("attention_score_multipliers values must be > 0")
 
 
 @dataclass

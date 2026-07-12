@@ -55,7 +55,6 @@ class CausalSelfAttention(nn.Module):
         self.log_attention_head_details: bool = False
         self.force_math_attention: bool = False
         self.attention_entropy_threshold: float = 0.5
-        self.attention_score_multipliers: list[float] = [1.0]
         self.qk_spectral_iters: int = 2
         self.last_attention_diagnostics: dict[str, float | list[float]] = {}
 
@@ -94,18 +93,19 @@ class CausalSelfAttention(nn.Module):
         q, k shape assumed: [B, H, T, D]
         logits shape: [B, H, T, T]
 
-        Metrics are computed for each configured alpha by reusing the same
-        base score matrix S_1 and evaluating S_alpha = alpha * S_1.
+        Metrics are computed for the run's configured attention scale.
         """
         with torch.no_grad():
-            base_logits = torch.matmul(q.float(), k.float().transpose(-2, -1)) * scale
+            logits = torch.matmul(q.float(), k.float().transpose(-2, -1)) * scale
 
-            seq_len = base_logits.size(-1)
+            seq_len = logits.size(-1)
             causal_mask = torch.ones(
                 (seq_len, seq_len),
-                device=base_logits.device,
+                device=logits.device,
                 dtype=torch.bool,
             ).tril()
+            masked_logits = logits.masked_fill(~causal_mask, float("-inf"))
+            valid_logits = logits[..., causal_mask]
 
             def _quantile_or_none(x: torch.Tensor, q_value: float) -> float | None:
                 x = x[torch.isfinite(x)]
@@ -113,65 +113,36 @@ class CausalSelfAttention(nn.Module):
                     return None
                 return float(torch.quantile(x, q_value).item())
 
-            def _alpha_label(alpha: float) -> str:
-                return f"alpha_{alpha:g}".replace(".", "p")
-
             valid_counts = torch.arange(
                 1,
                 seq_len + 1,
-                device=base_logits.device,
+                device=logits.device,
                 dtype=torch.float32,
             )
             h_max = valid_counts.log().view(1, 1, seq_len)
-            base_spectral = torch.linalg.matrix_norm(
-                base_logits.float(),
-                ord=2,
-                dim=(-2, -1),
-            )
-            diagnostics: dict[str, float | list[float]] = {}
 
-            for alpha in self.attention_score_multipliers:
-                logits = base_logits * float(alpha)
-                masked_logits = logits.masked_fill(~causal_mask, float("-inf"))
-                valid_logits = logits[..., causal_mask]
+            probs = torch.softmax(masked_logits, dim=-1)
+            probs_safe = probs.clamp_min(1e-12)
+            entropy = -(probs * probs_safe.log()).sum(dim=-1)
 
-                probs = torch.softmax(masked_logits, dim=-1)
-                probs_safe = probs.clamp_min(1e-12)
-                entropy = -(probs * probs_safe.log()).sum(dim=-1)
+            # Position 0 has one valid key and log(1)=0, so exclude it from
+            # normalized entropy rather than making it look collapsed.
+            normalized_entropy = entropy[..., 1:] / h_max[..., 1:]
 
-                # Position 0 has one valid key and log(1)=0, so exclude it from
-                # normalized entropy rather than making it look collapsed.
-                normalized_entropy = entropy[..., 1:] / h_max[..., 1:]
-                final_entropy = entropy[..., -1] / float(math.log(seq_len))
+            max_prob = probs.max(dim=-1).values
+            top2 = masked_logits[..., 1:, :].topk(k=2, dim=-1).values
+            gap = top2[..., 0] - top2[..., 1]
 
-                max_prob = probs.max(dim=-1).values
-                top2 = masked_logits[..., 1:, :].topk(k=2, dim=-1).values
-                gap = top2[..., 0] - top2[..., 1]
-
-                spectral = base_spectral * float(alpha)
-
-                values = {
-                    "score_l2_mean": float(spectral.mean().item()),
-                    "score_l2_max": float(spectral.max().item()),
-                    "logit_std": float(valid_logits.float().std(unbiased=False).item()),
-                    "absmax_p95": _quantile_or_none(valid_logits.abs(), 0.95),
-                    "gap_p95": _quantile_or_none(gap.flatten(), 0.95),
-                    "entropy_mean": float(entropy.mean().item()),
-                    "entropy_p05": _quantile_or_none(entropy.flatten(), 0.05),
-                    "normalized_entropy_mean": float(normalized_entropy.mean().item()),
-                    "final_normalized_entropy_mean": float(final_entropy.mean().item()),
-                    "maxprob_mean": float(max_prob.mean().item()),
-                    "maxprob_frac_gt_0.9": float((max_prob > 0.9).float().mean().item()),
-                }
-
-                prefix = _alpha_label(float(alpha))
-                for key, value in values.items():
-                    if value is not None:
-                        diagnostics[f"{prefix}/{key}"] = value
-                        if float(alpha) == 1.0:
-                            diagnostics[key] = value
-
-            self.last_attention_diagnostics = diagnostics
+            self.last_attention_diagnostics = {
+                "attention_logit_multiplier": float(self.cfg.attention.attention_logit_multiplier),
+                "logit_std": float(valid_logits.float().std(unbiased=False).item()),
+                "absmax_p95": _quantile_or_none(valid_logits.abs(), 0.95),
+                "gap_p95": _quantile_or_none(gap.flatten(), 0.95),
+                "entropy_p05": _quantile_or_none(entropy.flatten(), 0.05),
+                "normalized_entropy_mean": float(normalized_entropy.mean().item()),
+                "maxprob_mean": float(max_prob.mean().item()),
+                "maxprob_frac_gt_0.9": float((max_prob > 0.9).float().mean().item()),
+            }
     # def _record_attention_diagnostics(
     #     self,
     #     q: torch.Tensor,
@@ -253,7 +224,7 @@ class CausalSelfAttention(nn.Module):
         )
         q, k = apply_rope(q, k, cos, sin)
 
-        scale = 1.0 / math.sqrt(self.head_dim)
+        scale = self.cfg.attention.attention_logit_multiplier / math.sqrt(self.head_dim)
 
 
         if self.log_attention_diagnostics and self.attention_diagnostics_active:
@@ -272,6 +243,7 @@ class CausalSelfAttention(nn.Module):
                 attn_mask=None,
                 dropout_p=0.0,
                 is_causal=True,
+                scale=scale,
             )
 
         y = y.transpose(1, 2).contiguous().view(bsz, seq_len, self.num_heads * self.head_dim)
@@ -326,6 +298,7 @@ class ExclusionSelfAttention(CausalSelfAttention):
             dtype=x.dtype,
         )
         q, k = apply_rope(q, k, cos, sin)
+        scale = self.cfg.attention.attention_logit_multiplier / math.sqrt(self.head_dim)
 
         y = F.scaled_dot_product_attention(
             q,
@@ -335,6 +308,7 @@ class ExclusionSelfAttention(CausalSelfAttention):
             dropout_p=0.0,
             is_causal=True,
             enable_gqa=(self.num_heads != self.num_kv_heads),
+            scale=scale,
         )
 
         if self.num_heads != self.num_kv_heads:
@@ -399,6 +373,7 @@ class SlidingWindowAttention(CausalSelfAttention):
             dtype=x.dtype,
         )
         q, k = apply_rope(q, k, cos, sin)
+        scale = self.cfg.attention.attention_logit_multiplier / math.sqrt(self.head_dim)
 
         mask = self._build_sliding_window_mask(seq_len, x.device)
 
@@ -410,6 +385,7 @@ class SlidingWindowAttention(CausalSelfAttention):
             dropout_p=0.0,
             is_causal=False,
             enable_gqa=(self.num_heads != self.num_kv_heads),
+            scale=scale,
         )
 
         y = y.transpose(1, 2).contiguous().view(

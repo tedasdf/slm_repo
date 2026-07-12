@@ -32,6 +32,7 @@ class AttentionConfig:
     # positional / attention options
     rope_base: float = 10_000.0
     qk_gain_init: float = 1.0
+    attention_logit_multiplier: float = 1.0
     window_size: Optional[int] = None
     qk_norm: bool = False
 
@@ -58,6 +59,8 @@ class AttentionConfig:
             raise ValueError("rope_base must be > 0")
         if self.qk_gain_init <= 0:
             raise ValueError("qk_gain_init must be > 0")
+        if self.attention_logit_multiplier <= 0:
+            raise ValueError("attention_logit_multiplier must be > 0")
 
 
 @dataclass

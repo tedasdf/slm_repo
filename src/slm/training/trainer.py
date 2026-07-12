@@ -559,9 +559,6 @@ class Trainer:
             attn.log_attention_head_details = bool(
                 getattr(self.config, "log_attention_head_details", False)
             )
-            attn.attention_score_multipliers = list(
-                getattr(self.config, "attention_score_multipliers", [1.0])
-            )
             attn.attention_entropy_threshold = float(
                 getattr(self.config, "attention_entropy_threshold", 0.5)
             )

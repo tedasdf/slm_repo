@@ -19,6 +19,7 @@ model:
     num_kv_heads: 8
     head_dim: 32
     rope_base: 10000.0
+    attention_logit_multiplier: 1.0
     qk_norm: false
 
   mlp:
