@@ -55,6 +55,7 @@ class CausalSelfAttention(nn.Module):
         self.log_attention_head_details: bool = False
         self.force_math_attention: bool = False
         self.attention_entropy_threshold: float = 0.5
+        self.attention_score_multipliers: list[float] = [1.0]
         self.qk_spectral_iters: int = 2
         self.last_attention_diagnostics: dict[str, float | list[float]] = {}
 
@@ -93,28 +94,18 @@ class CausalSelfAttention(nn.Module):
         q, k shape assumed: [B, H, T, D]
         logits shape: [B, H, T, T]
 
-        Metrics:
-        - absmax_p95: high-tail magnitude of valid causal attention logits
-        - gap_p95: high-tail top1 - top2 logit gap per query
-        - maxprob_frac_gt_0.9: fraction of queries with very peaked attention
-        - entropy_mean: average attention entropy
-        - entropy_p05: low-tail entropy, catches partial collapse
+        Metrics are computed for each configured alpha by reusing the same
+        base score matrix S_1 and evaluating S_alpha = alpha * S_1.
         """
         with torch.no_grad():
-            logits = torch.matmul(q.float(), k.float().transpose(-2, -1)) * scale
+            base_logits = torch.matmul(q.float(), k.float().transpose(-2, -1)) * scale
 
-            seq_len = logits.size(-1)
+            seq_len = base_logits.size(-1)
             causal_mask = torch.ones(
                 (seq_len, seq_len),
-                device=logits.device,
+                device=base_logits.device,
                 dtype=torch.bool,
             ).tril()
-
-            # Broadcast causal mask over [B, H, T, T].
-            masked_logits = logits.masked_fill(~causal_mask, float("-inf"))
-
-            # Valid logits only, excluding masked future positions.
-            valid_logits = logits[..., causal_mask]
 
             def _quantile_or_none(x: torch.Tensor, q_value: float) -> float | None:
                 x = x[torch.isfinite(x)]
@@ -122,37 +113,65 @@ class CausalSelfAttention(nn.Module):
                     return None
                 return float(torch.quantile(x, q_value).item())
 
-            # 1. Logit magnitude growth.
-            absmax_p95 = _quantile_or_none(valid_logits.abs(), 0.95)
+            def _alpha_label(alpha: float) -> str:
+                return f"alpha_{alpha:g}".replace(".", "p")
 
-            # 2. Attention probabilities.
-            probs = torch.softmax(masked_logits, dim=-1)
+            valid_counts = torch.arange(
+                1,
+                seq_len + 1,
+                device=base_logits.device,
+                dtype=torch.float32,
+            )
+            h_max = valid_counts.log().view(1, 1, seq_len)
+            base_spectral = torch.linalg.matrix_norm(
+                base_logits.float(),
+                ord=2,
+                dim=(-2, -1),
+            )
+            diagnostics: dict[str, float | list[float]] = {}
 
-            # 3. Entropy per query: shape [B, H, T].
-            probs_safe = probs.clamp_min(1e-12)
-            entropy = -(probs * probs_safe.log()).sum(dim=-1)
+            for alpha in self.attention_score_multipliers:
+                logits = base_logits * float(alpha)
+                masked_logits = logits.masked_fill(~causal_mask, float("-inf"))
+                valid_logits = logits[..., causal_mask]
 
-            entropy_mean = float(entropy.mean().item())
-            entropy_p05 = _quantile_or_none(entropy.flatten(), 0.05)
+                probs = torch.softmax(masked_logits, dim=-1)
+                probs_safe = probs.clamp_min(1e-12)
+                entropy = -(probs * probs_safe.log()).sum(dim=-1)
 
-            # 4. Max probability concentration.
-            max_prob = probs.max(dim=-1).values
-            maxprob_frac_gt_0_9 = float((max_prob > 0.9).float().mean().item())
+                # Position 0 has one valid key and log(1)=0, so exclude it from
+                # normalized entropy rather than making it look collapsed.
+                normalized_entropy = entropy[..., 1:] / h_max[..., 1:]
+                final_entropy = entropy[..., -1] / float(math.log(seq_len))
 
-            # 5. Top1 - top2 logit gap.
-            # For position 0 there is only one valid causal key, so top2 gives -inf.
-            # We filter those out.
-            top2 = masked_logits.topk(k=2, dim=-1).values
-            gap = top2[..., 0] - top2[..., 1]
-            gap_p95 = _quantile_or_none(gap.flatten(), 0.95)
+                max_prob = probs.max(dim=-1).values
+                top2 = masked_logits[..., 1:, :].topk(k=2, dim=-1).values
+                gap = top2[..., 0] - top2[..., 1]
 
-            self.last_attention_diagnostics = {
-                "absmax_p95": absmax_p95,
-                "gap_p95": gap_p95,
-                "maxprob_frac_gt_0.9": maxprob_frac_gt_0_9,
-                "entropy_mean": entropy_mean,
-                "entropy_p05": entropy_p05,
-            }
+                spectral = base_spectral * float(alpha)
+
+                values = {
+                    "score_l2_mean": float(spectral.mean().item()),
+                    "score_l2_max": float(spectral.max().item()),
+                    "logit_std": float(valid_logits.float().std(unbiased=False).item()),
+                    "absmax_p95": _quantile_or_none(valid_logits.abs(), 0.95),
+                    "gap_p95": _quantile_or_none(gap.flatten(), 0.95),
+                    "entropy_mean": float(entropy.mean().item()),
+                    "entropy_p05": _quantile_or_none(entropy.flatten(), 0.05),
+                    "normalized_entropy_mean": float(normalized_entropy.mean().item()),
+                    "final_normalized_entropy_mean": float(final_entropy.mean().item()),
+                    "maxprob_mean": float(max_prob.mean().item()),
+                    "maxprob_frac_gt_0.9": float((max_prob > 0.9).float().mean().item()),
+                }
+
+                prefix = _alpha_label(float(alpha))
+                for key, value in values.items():
+                    if value is not None:
+                        diagnostics[f"{prefix}/{key}"] = value
+                        if float(alpha) == 1.0:
+                            diagnostics[key] = value
+
+            self.last_attention_diagnostics = diagnostics
     # def _record_attention_diagnostics(
     #     self,
     #     q: torch.Tensor,

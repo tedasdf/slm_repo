@@ -191,6 +191,7 @@ class WandBCallback(Callback):
                 # key.startswith("grad_norm_inspect/") or
                 key.startswith("optimizer_inspect/")
                 or key.startswith("attention_diagnostics/")
+                or key.startswith("step_zero/")
             ) and value is not None:
                 payload[key] = value
 

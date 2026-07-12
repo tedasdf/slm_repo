@@ -555,9 +555,12 @@ class Trainer:
             attn.log_attention_diagnostics = bool(
                 getattr(self.config, "log_attention_diagnostics", False)
             )
-            attn.attention_diagnostics_active = active
+            attn.attention_diagnostics_active = layer_active
             attn.log_attention_head_details = bool(
                 getattr(self.config, "log_attention_head_details", False)
+            )
+            attn.attention_score_multipliers = list(
+                getattr(self.config, "attention_score_multipliers", [1.0])
             )
             attn.attention_entropy_threshold = float(
                 getattr(self.config, "attention_entropy_threshold", 0.5)
@@ -587,15 +590,7 @@ class Trainer:
                 continue
 
             prefix = f"attention_diagnostics/layer_{layer_idx}"
-            scalar_keys = (
-                "absmax_p95",
-                "gap_p95",
-                "maxprob_frac_gt_0.9",
-                "entropy_mean",
-                "entropy_p05",
-            )
-            for key in scalar_keys:
-                value = diagnostics.get(key)
+            for key, value in diagnostics.items():
                 if value is not None:
                     self.state.extra[f"{prefix}/{key}"] = float(value)
 
@@ -932,6 +927,43 @@ class Trainer:
 
         print(f"[checkpoint] resumed from {path} at step={self.state.step}")
 
+    def _run_step_zero_attention_calibration(self) -> None:
+        was_training = self.model.training
+        self.model.eval()
+        self._inspect_this_step = True
+        self._set_attention_diagnostics_active(True)
+
+        batch = next(iter(self.train_loader))
+        batch = self._tokenize_batch_if_needed(batch)
+        batch = move_to_device(batch, self.device)
+        model_inputs, _ = self._extract_model_inputs(batch)
+
+        with torch.no_grad(), self._autocast_context():
+            if isinstance(model_inputs, dict):
+                outputs = self.model(**model_inputs)
+            else:
+                outputs = self.model(model_inputs)
+
+        self._collect_attention_diagnostics()
+        self.state.extra["step_zero/attention_calibration"] = True
+
+        if isinstance(outputs, dict):
+            logits = outputs.get("logits")
+            if torch.is_tensor(logits):
+                logits_detached = logits.detach()
+                self.state.extra["diagnostics/max_logit"] = logits_detached.max().item()
+                self.state.extra["diagnostics/min_logit"] = logits_detached.min().item()
+                self.state.extra["diagnostics/mean_max_softmax_prob"] = (
+                    torch.softmax(logits_detached, dim=-1).max(dim=-1).values.mean().item()
+                )
+
+        self.callbacks.on_step_end(self, {"step_zero": True})
+        self._set_attention_diagnostics_active(False)
+        self._inspect_this_step = False
+
+        if was_training:
+            self.model.train()
+
     def train(self) -> TrainState:
         if self.config.resume_from_checkpoint:
             self.load_checkpoint(self.config.resume_from_checkpoint)
@@ -948,6 +980,11 @@ class Trainer:
 
         try:
             self._fit_tokenizer_if_needed()
+
+            if getattr(self.config, "step_zero_attention_calibration", False):
+                self._run_step_zero_attention_calibration()
+                self.callbacks.on_train_end(self)
+                return self.state
 
             if self.config.num_sanity_val_steps > 0 and self.val_loader is not None:
                 eval_outputs = self.validate()
