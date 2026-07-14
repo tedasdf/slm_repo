@@ -10,7 +10,7 @@
 #SBATCH --output=logs/slurm/%x-%j.out
 #SBATCH --error=logs/slurm/%x-%j.err
 
-# 5-step smoke test for the attention-logit multiplier pipeline.
+# Step-zero smoke test for the attention-logit multiplier pipeline.
 #
 # Usage:
 #   mkdir -p logs/slurm
@@ -26,7 +26,7 @@ for IDX in "${!ALPHAS[@]}"; do
     ALPHA_LABEL=${LABELS[$IDX]}
 
     export CONFIG_PATH="configs/train/ALG.yaml"
-    export CONFIG_OVERRIDES_JSON="{\"model\":{\"attention\":{\"attention_logit_multiplier\":${ALPHA}}},\"scheduler\":{\"warmup_steps\":1,\"t_max\":5,\"eta_min\":0.0},\"trainer\":{\"max_steps\":5,\"train_log_every\":1,\"eval_every\":5,\"log_attention_diagnostics\":true,\"attention_diagnostic_layers\":[0,3,7]},\"logging\":{\"wandb_run_name\":null,\"wandb_tags\":[\"14m\",\"attention-logit-smoke\",\"${ALPHA_LABEL}\",\"alpha-${ALPHA}\",\"qk-norm-false\",\"5step\",\"attention-diagnostics\"]}}"
+    export CONFIG_OVERRIDES_JSON="{\"model\":{\"attention\":{\"attention_logit_multiplier\":${ALPHA}}},\"trainer\":{\"step_zero_attention_calibration\":true,\"log_attention_diagnostics\":true,\"attention_diagnostic_layers\":[0,3,7]},\"logging\":{\"wandb_run_name\":null,\"wandb_tags\":[\"14m\",\"attention-logit-smoke\",\"${ALPHA_LABEL}\",\"alpha-${ALPHA}\",\"qk-norm-false\",\"step-zero\",\"attention-diagnostics\"]}}"
 
     echo "Sweep idx: $IDX"
     echo "Alpha:     $ALPHA"
