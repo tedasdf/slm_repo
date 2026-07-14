@@ -142,8 +142,10 @@ class CausalSelfAttention(nn.Module):
             wq_norm = torch.linalg.matrix_norm(wq, ord=2)
             wk_norm = torch.linalg.matrix_norm(wk, ord=2)
             wk_wqT_norm = torch.linalg.matrix_norm(wk @ wq.T, ord=2)
+            score_norm_bound = abs(float(scale)) * xxt_norm * wk_wqT_norm
 
             self.last_attention_diagnostics = {
+                "qk_gain_init": float(self.cfg.attention.qk_gain_init),
                 "attention_logit_multiplier": float(self.cfg.attention.attention_logit_multiplier),
                 "attention_input_multiplier": float(self.cfg.attention.attention_input_multiplier),
                 "head_dim": float(self.head_dim),
@@ -155,6 +157,8 @@ class CausalSelfAttention(nn.Module):
                 "wq_norm_2": float(wq_norm.item()),
                 "wk_norm_2": float(wk_norm.item()),
                 "wk_wqT_norm_2": float(wk_wqT_norm.item()),
+                "score_norm_bound_mean": float(score_norm_bound.mean().item()),
+                "score_norm_bound_max": float(score_norm_bound.max().item()),
                 "logit_std": float(valid_logits.float().std(unbiased=False).item()),
                 "absmax_p95": _quantile_or_none(valid_logits.abs(), 0.95),
                 "gap_p95": _quantile_or_none(gap.flatten(), 0.95),
