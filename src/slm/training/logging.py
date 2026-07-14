@@ -227,6 +227,13 @@ class WandBCallback(Callback):
             model = getattr(trainer.model, "module", trainer.model)
             self._run.summary["config/num_layers"] = model.cfg.num_layers
             self._run.summary["config/model_dim"]  = model.cfg.model_dim
+            self._run.summary["config/qk_gain_init"] = model.cfg.attention.qk_gain_init
+            self._run.summary["config/attention_logit_multiplier"] = (
+                model.cfg.attention.attention_logit_multiplier
+            )
+            self._run.summary["config/attention_input_multiplier"] = (
+                model.cfg.attention.attention_input_multiplier
+            )
             self._run.summary["config/core_params"] = model.count_core_params()
             self._run.summary["config/total_params"] = model.count_params()
         except AttributeError:

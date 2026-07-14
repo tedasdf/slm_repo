@@ -49,7 +49,8 @@ class TransformerBlock(nn.Module):
         ):
             x0.register_hook(self._record_resid_grad_norm)
 
-        attn_out = self.attn(self.attn_norm(x0), **attn_kwargs)
+        attn_input = self.attn_norm(x0) * self.cfg.attention.attention_input_multiplier
+        attn_out = self.attn(attn_input, **attn_kwargs)
         x1 = x0 + attn_out
 
         mlp_out = self.mlp(self.mlp_norm(x1))
