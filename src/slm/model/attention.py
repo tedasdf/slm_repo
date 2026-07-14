@@ -83,6 +83,7 @@ class CausalSelfAttention(nn.Module):
 
     def _record_attention_diagnostics(
         self,
+        x: torch.Tensor,
         q: torch.Tensor,
         k: torch.Tensor,
         *,
@@ -90,6 +91,7 @@ class CausalSelfAttention(nn.Module):
     ) -> None:
         """Record minimal attention-logit-growth diagnostics.
 
+        x shape assumed: [B, T, model_dim]
         q, k shape assumed: [B, H, T, D]
         logits shape: [B, H, T, T]
 
@@ -133,8 +135,26 @@ class CausalSelfAttention(nn.Module):
             top2 = masked_logits[..., 1:, :].topk(k=2, dim=-1).values
             gap = top2[..., 0] - top2[..., 1]
 
+            x_norm = torch.linalg.matrix_norm(x.float(), ord=2, dim=(-2, -1))
+            xxt_norm = x_norm.square()
+            wq = self.q_proj.weight.detach().float()
+            wk = self.k_proj.weight.detach().float()
+            wq_norm = torch.linalg.matrix_norm(wq, ord=2)
+            wk_norm = torch.linalg.matrix_norm(wk, ord=2)
+            wk_wqT_norm = torch.linalg.matrix_norm(wk @ wq.T, ord=2)
+
             self.last_attention_diagnostics = {
                 "attention_logit_multiplier": float(self.cfg.attention.attention_logit_multiplier),
+                "attention_input_multiplier": float(self.cfg.attention.attention_input_multiplier),
+                "head_dim": float(self.head_dim),
+                "seq_len": float(seq_len),
+                "x_norm_2_mean": float(x_norm.mean().item()),
+                "x_norm_2_max": float(x_norm.max().item()),
+                "xxt_norm_2_mean": float(xxt_norm.mean().item()),
+                "xxt_norm_2_max": float(xxt_norm.max().item()),
+                "wq_norm_2": float(wq_norm.item()),
+                "wk_norm_2": float(wk_norm.item()),
+                "wk_wqT_norm_2": float(wk_wqT_norm.item()),
                 "logit_std": float(valid_logits.float().std(unbiased=False).item()),
                 "absmax_p95": _quantile_or_none(valid_logits.abs(), 0.95),
                 "gap_p95": _quantile_or_none(gap.flatten(), 0.95),
@@ -228,7 +248,7 @@ class CausalSelfAttention(nn.Module):
 
 
         if self.log_attention_diagnostics and self.attention_diagnostics_active:
-            self._record_attention_diagnostics(q, k, scale=scale)
+            self._record_attention_diagnostics(x, q, k, scale=scale)
 
         sdpa_context = (
             sdpa_kernel(SDPBackend.MATH)
